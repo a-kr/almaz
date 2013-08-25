@@ -34,3 +34,14 @@ stats.statsd.graphiteStats.flush_time 21 1377447313
 stats.statsd.graphiteStats.flush_length 471582 1377447313
 ```
 Lines are separated by `\n`. Each line contains three fields -- metric name (string without spaces), metric value (float), and Unix timestamp (integer), separated by one space. You can submit an arbitrary number of metrics in a single connection.
+
+Almaz backend for statsd
+------------------------
+
+ * Put following settings in your `statsd` config file.
+```
+, almazPort: 7701
+, almazHost: "localhost" 
+```
+ * Copy `statsd_backend/almaz.js` file from this repository to `backends/` directory in your *statsd* installation.
+ * Restart your *statsd* daemon.
