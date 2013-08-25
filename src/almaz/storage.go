@@ -46,6 +46,10 @@ func (self *Storage) StoreMetric(metric_name string, value float64, ts int64) {
 	metric.Store(float32(value), ts)
 }
 
+func (self *Storage) MetricCount() int {
+	return len(self.metrics)
+}
+
 func (self *Metric) Store(value float32, ts int64) {
 	dt_64 := int64(self.dt)
 	ts_k := ts / dt_64

@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"net"
+	"time"
 	"bufio"
 	"strings"
 	"strconv"
@@ -42,8 +43,7 @@ func (self *AlmazServer) handleConnection(conn net.Conn) {
 	scanner := bufio.NewScanner(conn)
 	for scanner.Scan() {
 		trimmedString := scanner.Text()
-		log.Printf("Incomming line: %s", trimmedString)
-		parts := strings.Split(trimmedString, "\n")
+		parts := strings.Split(trimmedString, " ")
 		if len(parts) == 3 {
 			metric := parts[0]
 			value, err1 := strconv.ParseFloat(parts[1], 32)
@@ -67,3 +67,10 @@ func (self *AlmazServer) handleConnection(conn net.Conn) {
 	}
 }
 
+
+func (self *AlmazServer) AuditLoop() {
+	for {
+		time.Sleep(30 * time.Second)
+		log.Printf("Audit: metric number = %d", self.storage.MetricCount())
+	}
+}
