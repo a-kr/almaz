@@ -61,4 +61,24 @@ func Test_Circularity(t *testing.T) {
 	AssertEqual(t, m.GetValueAt(81), 88)
 	AssertEqual(t, m.GetValueAt(96), 0)
 	AssertEqual(t, m.GetValueAt(105), 0)
+
+	AssertEqual(t, m.GetSumBetween(1, 19), 0)
+	AssertEqual(t, m.GetSumBetween(1, 29), 0)
+	AssertEqual(t, m.GetSumBetween(1, 35), 0) // excl. right bounds
+	AssertEqual(t, m.GetSumBetween(1, 45), 38)
+	AssertEqual(t, m.GetSumBetween(1, 49), 38)
+	AssertEqual(t, m.GetSumBetween(1, 59), 38)
+	AssertEqual(t, m.GetSumBetween(1, 64), 38+55)
+	AssertEqual(t, m.GetSumBetween(39, 64), 38+55)
+	AssertEqual(t, m.GetSumBetween(41, 69), 55)
+	AssertEqual(t, m.GetSumBetween(41, 77), 55 + 64)
+	AssertEqual(t, m.GetSumBetween(41, 83), 55 + 64)
+	AssertEqual(t, m.GetSumBetween(41, 92), 55 + 64 + 88)
+	AssertEqual(t, m.GetSumBetween(41, 102), 55 + 64 + 88)
+	AssertEqual(t, m.GetSumBetween(41, 183), 55 + 64 + 88)
+	AssertEqual(t, m.GetSumBetween(0, 183), 38 + 55 + 64 + 88)
+	AssertEqual(t, m.GetSumBetween(92, 183), 0)
+
+	AssertEqual(t, m.GetSumForLastNSeconds(10, 100), 0)
+	AssertEqual(t, m.GetSumForLastNSeconds(20, 100), 88)
 }

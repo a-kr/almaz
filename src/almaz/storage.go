@@ -1,7 +1,7 @@
 package main
 
 import (
-	 "log"
+	 _ "log"
 )
 
 const (
@@ -68,6 +68,41 @@ func (self *Metric) GetValueAt(ts int64) float64 {
 	if i < 0 {
 		i += len(self.array)
 	}
-	log.Printf("ts %v, ts_k %v, self.latest_ts_k %v --> i %v", ts, ts_k, self.latest_ts_k, i)
+	/*log.Printf("ts %v, ts_k %v, self.latest_ts_k %v --> i %v", ts, ts_k, self.latest_ts_k, i)*/
 	return float64(self.array[i])
+}
+
+func (self *Metric) GetSumBetween(ts1 int64, ts2 int64) float64 {
+	ts1_k := ts1 / int64(self.dt)
+	ts2_k := ts2 / int64(self.dt)
+	if ts2_k <= self.latest_ts_k - int64(len(self.array)) || ts1_k > self.latest_ts_k {
+		return 0.0
+	}
+
+	if ts1_k <= self.latest_ts_k - int64(len(self.array)) {
+		ts1_k = self.latest_ts_k - int64(len(self.array)) + 1
+	}
+	if ts2_k > self.latest_ts_k {
+		ts2_k = self.latest_ts_k + 1
+	}
+
+	d_ts1_k := self.latest_ts_k - ts1_k
+	i := (self.latest_i - int(d_ts1_k))
+	if i < 0 {
+		i += len(self.array)
+	}
+
+	sum := 0.0
+	for ts1_k < ts2_k {
+		sum += float64(self.array[i])
+		i = (i + 1) % len(self.array)
+		ts1_k += 1
+	}
+	return sum
+}
+
+func (self *Metric) GetSumForLastNSeconds(seconds int64, now_ts int64) float64 {
+	ts2 := now_ts + int64(self.dt)
+	ts1 := now_ts - seconds
+	return self.GetSumBetween(ts1, ts2)
 }
