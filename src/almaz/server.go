@@ -22,7 +22,7 @@ func NewAlmazServer() *AlmazServer {
 	return s
 }
 
-func (self *AlmazServer) Start(bindAddress string) {
+func (self *AlmazServer) StartGraphite(bindAddress string) {
 	listener, err := net.Listen("tcp", bindAddress)
 	if err != nil {
 		log.Fatalf("failed to listen: %s", err)
@@ -34,12 +34,13 @@ func (self *AlmazServer) Start(bindAddress string) {
 			log.Printf(err.Error())
 			continue
 		}
-		self.handleConnection(conn)
+		self.handleGraphiteConnection(conn)
 	}
 }
 
-func (self *AlmazServer) handleConnection(conn net.Conn) {
+func (self *AlmazServer) handleGraphiteConnection(conn net.Conn) {
 	defer conn.Close()
+	t1 := time.Now()
 	scanner := bufio.NewScanner(conn)
 	for scanner.Scan() {
 		trimmedString := scanner.Text()
@@ -64,6 +65,11 @@ func (self *AlmazServer) handleConnection(conn net.Conn) {
 				self.storage.StoreMetric(metric, value, ts)
 			}
 		}
+	}
+	t2 := time.Now()
+	dt := t2.Sub(t1)
+	if *debug {
+		log.Printf("Processed metrics batch in %s", dt.String())
 	}
 }
 

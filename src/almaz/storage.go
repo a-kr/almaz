@@ -1,7 +1,8 @@
 package main
 
 import (
-	 _ "log"
+	"sync"
+	"log"
 )
 
 const (
@@ -11,9 +12,12 @@ const (
 
 type Storage struct {
 	metrics map[string]*Metric
+	duration int
+	dt int
 }
 
 type Metric struct {
+	sync.RWMutex
 	array []float32
 	dt int
 	duration int
@@ -23,6 +27,8 @@ type Metric struct {
 
 func NewStorage() *Storage {
 	s := new(Storage)
+	s.duration = DEFAULT_DURATION
+	s.dt = DEFAULT_DT
 	s.metrics = make(map[string]*Metric)
 	return s
 }
@@ -40,7 +46,7 @@ func NewMetric(duration int, dt int, starting_ts int64) *Metric {
 func (self *Storage) StoreMetric(metric_name string, value float64, ts int64) {
 	metric, ok := self.metrics[metric_name]
 	if !ok {
-		metric = NewMetric(DEFAULT_DURATION, DEFAULT_DT, ts)
+		metric = NewMetric(self.duration, self.dt, ts)
 		self.metrics[metric_name] = metric
 	}
 	metric.Store(float32(value), ts)
@@ -50,7 +56,20 @@ func (self *Storage) MetricCount() int {
 	return len(self.metrics)
 }
 
+func (self *Storage) SetStorageParams(duration_hours int, precision_seconds int) {
+	if duration_hours <= 0 {
+		log.Fatal("duration must be greater than zero")
+	}
+	if precision_seconds <= 0 {
+		log.Fatal("precision must be greater than zero")
+	}
+	self.duration = duration_hours * 60 * 60
+	self.dt = precision_seconds
+}
+
 func (self *Metric) Store(value float32, ts int64) {
+	self.Lock()
+	defer self.Unlock()
 	dt_64 := int64(self.dt)
 	ts_k := ts / dt_64
 	/*log.Printf("(%f, %d) ts_k %d, latest_ts_k %d", value, ts, ts_k, self.latest_ts_k)*/
@@ -63,6 +82,8 @@ func (self *Metric) Store(value float32, ts int64) {
 }
 
 func (self *Metric) GetValueAt(ts int64) float64 {
+	self.RLock()
+	defer self.RUnlock()
 	ts_k := ts / int64(self.dt)
 	if ts_k <= self.latest_ts_k - int64(len(self.array)) || ts_k > self.latest_ts_k {
 		return 0.0
@@ -77,6 +98,8 @@ func (self *Metric) GetValueAt(ts int64) float64 {
 }
 
 func (self *Metric) GetSumBetween(ts1 int64, ts2 int64) float64 {
+	self.RLock()
+	defer self.RUnlock()
 	ts1_k := ts1 / int64(self.dt)
 	ts2_k := ts2 / int64(self.dt)
 	if ts2_k <= self.latest_ts_k - int64(len(self.array)) || ts1_k > self.latest_ts_k {

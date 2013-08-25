@@ -7,13 +7,17 @@ import (
 var (
 	bindAddress = flag.String("address", ":7701", "address to listen on")
 	runAudits = flag.Bool("audit", false, "run audits periodically")
+	debug = flag.Bool("debug", false, "print additional info")
+	storageDuration = flag.Int("duration-in-hours", 24, "store metrics for last N hours")
+	storagePrecision = flag.Int("precision-in-seconds", 60, "store metrics with precision of N seconds")
 )
 
 func main() {
 	flag.Parse()
 	server := NewAlmazServer()
+	server.storage.SetStorageParams(*storageDuration, *storagePrecision)
 	if *runAudits {
 		go server.AuditLoop()
 	}
-	server.Start(*bindAddress)
+	server.StartGraphite(*bindAddress)
 }
