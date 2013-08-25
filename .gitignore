@@ -1,1 +1,4 @@
 src/launchpad.net
+pkg
+bin
+*.swp
