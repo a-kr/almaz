@@ -41,7 +41,11 @@ Almaz backend for statsd
  * Put following settings in your `statsd` config file.
 ```
 , almazPort: 7701
-, almazHost: "localhost" 
+, almazHost: "localhost 
+e``
+ * Add *almaz* backend to the list of backends
+```
+, backends: [ "./backends/graphite", "./backends/almaz" ]
 ```
  * Copy `statsd_backend/almaz.js` file from this repository to `backends/` directory in your *statsd* installation.
  * Restart your *statsd* daemon.
