@@ -156,8 +156,6 @@ func (self *AlmazServer) WaitForTermination(persist_on_exit bool, bgsave_interva
 	impeding_death := make(chan os.Signal, 1)
 	signal.Notify(impeding_death, syscall.SIGINT, syscall.SIGTERM)
 
-	/*utils.IgnoreDeadChildren()*/
-
 	bgsave_ticker := time.NewTicker(bgsave_int_duration)
 
 	for {

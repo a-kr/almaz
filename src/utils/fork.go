@@ -30,21 +30,15 @@ func Fork() int {
 }
 
 func DoubleFork() int {
-	log.Printf("fork one...")
 	f1 := Fork()
 	if f1 > 0 {
-		log.Printf("one forked, im parent, waiting")
 		Wait()
-		log.Printf("parent wait complete")
 		return f1
 	} else {
-		log.Printf("im child, fork two")
 		f2 := Fork()
 		if f2 > 0 {
-			log.Printf("im parent of child, dying")
 			os.Exit(0)
 		}
 	}
-	log.Printf("im grandchild, living")
 	return 0
 }
