@@ -64,15 +64,15 @@ func Test_Circularity(t *testing.T) {
 
 	AssertEqual(t, m.GetSumBetween(1, 19), 0)
 	AssertEqual(t, m.GetSumBetween(1, 29), 0)
-	AssertEqual(t, m.GetSumBetween(1, 35), 0) // excl. right bounds
+	AssertEqual(t, m.GetSumBetween(1, 35), 38)
 	AssertEqual(t, m.GetSumBetween(1, 45), 38)
 	AssertEqual(t, m.GetSumBetween(1, 49), 38)
-	AssertEqual(t, m.GetSumBetween(1, 59), 38)
-	AssertEqual(t, m.GetSumBetween(1, 64), 38+55)
-	AssertEqual(t, m.GetSumBetween(39, 64), 38+55)
-	AssertEqual(t, m.GetSumBetween(41, 69), 55)
+	AssertEqual(t, m.GetSumBetween(1, 59), 38 + 55)
+	AssertEqual(t, m.GetSumBetween(1, 64), 38 + 55 + 64)
+	AssertEqual(t, m.GetSumBetween(39, 64), 38 + 55 + 64)
+	AssertEqual(t, m.GetSumBetween(41, 69), 55 + 64)
 	AssertEqual(t, m.GetSumBetween(41, 77), 55 + 64)
-	AssertEqual(t, m.GetSumBetween(41, 83), 55 + 64)
+	AssertEqual(t, m.GetSumBetween(41, 83), 55 + 64 + 88)
 	AssertEqual(t, m.GetSumBetween(41, 92), 55 + 64 + 88)
 	AssertEqual(t, m.GetSumBetween(41, 102), 55 + 64 + 88)
 	AssertEqual(t, m.GetSumBetween(41, 183), 55 + 64 + 88)
@@ -81,6 +81,19 @@ func Test_Circularity(t *testing.T) {
 
 	AssertEqual(t, m.GetSumForLastNSeconds(10, 100), 0)
 	AssertEqual(t, m.GetSumForLastNSeconds(20, 100), 88)
+}
+
+func Test_LateArrivals(t *testing.T) {
+	m := NewMetric(60, 10, 1)
+	m.Store(1, 1) // bucket 0
+	m.Store(12, 12) // bucket 1
+	m.Store(38, 38) // bucket 3
+	m.Store(55, 55) // bucket 5
+	m.Store(64, 64) // bucket 0
+	m.Store(88, 88) // bucket 2
+	m.Store(10, 72) // bucket 1, suddenly
+
+	AssertEqual(t, m.GetValueAt(73), 10)
 }
 
 func Test_PeriodSums(t *testing.T) {
@@ -92,7 +105,23 @@ func Test_PeriodSums(t *testing.T) {
 	m.Store(64, 64) // bucket 0
 	m.Store(88, 88) // bucket 2
 
-	s := m.GetSumsPerPeriodUntilNow([]int64{10, 20, 30, 40, 60, 100}, 94)
+
+	s := m.GetSumsPerPeriodUntilNow([]int64{10}, 89)
+	AssertEqual(t, s[0], 88)
+
+	s = m.GetSumsPerPeriodUntilNow([]int64{10}, 64)
+	AssertEqual(t, s[0], 64)
+
+	m.Store(10, 74) // bucket 1
+
+	s = m.GetSumsPerPeriodUntilNow([]int64{10}, 64)
+	AssertEqual(t, s[0], 64)
+	s = m.GetSumsPerPeriodUntilNow([]int64{10}, 74)
+	AssertEqual(t, s[0], 10)
+
+	m.Store(-10, 74) // bucket 1
+
+	s = m.GetSumsPerPeriodUntilNow([]int64{10, 20, 30, 40, 60, 100}, 94)
 	AssertEqual(t, len(s), 6)
 	AssertEqual(t, s[0], 0) // sum @90..99 s
 	AssertEqual(t, s[1], 88) // sum @80..99 s
@@ -100,6 +129,7 @@ func Test_PeriodSums(t *testing.T) {
 	AssertEqual(t, s[3], 64 + 88) // sum @60..99 s
 	AssertEqual(t, s[4], 55 + 64 + 88) // sum @40..99 s
 	AssertEqual(t, s[5], 1 + 12 - 1 - 12 + 38 + 55 + 64 + 88) // sum @-10..99 s but only 30..99 are stored
+
 
 	s = m.GetSumsPerPeriodUntilNow([]int64{10, 20, 30, 40, 60, 100}, 174)
 	AssertEqual(t, len(s), 6)

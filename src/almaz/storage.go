@@ -123,6 +123,19 @@ func (self *Metric) Store(value float32, ts int64) {
 	dt_64 := int64(self.dt)
 	ts_k := ts / dt_64
 	/*log.Printf("(%f, %d) ts_k %d, latest_ts_k %d", value, ts, ts_k, self.latest_ts_k)*/
+	if self.latest_ts_k > ts_k {
+		// amend value in the past
+		i := int64(self.latest_i) - (self.latest_ts_k - ts_k)
+		if i < 0 {
+			i += int64(len(self.array))
+		}
+		if i < 0 {
+			// falls outside the storage period
+			return
+		}
+		self.array[i] += value
+		return
+	}
 	for self.latest_ts_k < ts_k {
 		self.latest_i = (self.latest_i + 1) % len(self.array)
 		self.array[self.latest_i] = 0.0
@@ -160,7 +173,7 @@ func (self *Metric) GetSumBetween(ts1 int64, ts2 int64) float64 {
 		ts1_k = self.latest_ts_k - int64(len(self.array)) + 1
 	}
 	if ts2_k > self.latest_ts_k {
-		ts2_k = self.latest_ts_k + 1
+		ts2_k = self.latest_ts_k
 	}
 
 	d_ts1_k := self.latest_ts_k - ts1_k
@@ -170,7 +183,7 @@ func (self *Metric) GetSumBetween(ts1 int64, ts2 int64) float64 {
 	}
 
 	sum := 0.0
-	for ts1_k < ts2_k {
+	for ts1_k <= ts2_k {
 		sum += float64(self.array[i])
 		i = (i + 1) % len(self.array)
 		ts1_k += 1
@@ -203,7 +216,7 @@ func (self *Metric) GetSumsPerPeriodUntilNow(periods []int64, now int64) []float
 	}
 
 	if now_k <= self.latest_ts_k - int64(len(self.array)) || min_k > self.latest_ts_k {
-		log.Printf("min_k %d, latest_ts_k %d, exiting", min_k, self.latest_ts_k)
+		/*log.Printf("min_k %d, latest_ts_k %d, exiting", min_k, self.latest_ts_k)*/
 		return period_sums
 	}
 
@@ -211,7 +224,7 @@ func (self *Metric) GetSumsPerPeriodUntilNow(periods []int64, now int64) []float
 		min_k = self.latest_ts_k - int64(len(self.array)) + 1
 	}
 	if now_k > self.latest_ts_k {
-		now_k = self.latest_ts_k + 1
+		now_k = self.latest_ts_k
 	}
 
 	d_min_k := self.latest_ts_k - min_k
@@ -220,7 +233,7 @@ func (self *Metric) GetSumsPerPeriodUntilNow(periods []int64, now int64) []float
 		i += len(self.array)
 	}
 
-	for min_k < now_k {
+	for min_k <= now_k {
 		/*log.Printf("Now at %d s, index %d", min_k * dt_64, i)*/
 		for j := range periods {
 			if period_starts_k[j] <= min_k {
@@ -231,6 +244,7 @@ func (self *Metric) GetSumsPerPeriodUntilNow(periods []int64, now int64) []float
 		i = (i + 1) % len(self.array)
 		min_k += 1
 	}
+	/*log.Printf("Now is %d s, index %d", now, int(now_k) % len(self.array))*/
 	return period_sums
 }
 
