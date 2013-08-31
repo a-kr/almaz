@@ -18,6 +18,7 @@ const (
 
 type Storage struct {
 	metrics map[string]*Metric
+	split_metric_names map[string][]string
 	duration int
 	dt int
 }
@@ -44,6 +45,7 @@ func NewStorage() *Storage {
 	s.duration = DEFAULT_DURATION
 	s.dt = DEFAULT_DT
 	s.metrics = make(map[string]*Metric)
+	s.split_metric_names = make(map[string][]string)
 	return s
 }
 
@@ -62,8 +64,14 @@ func (self *Storage) StoreMetric(metric_name string, value float64, ts int64) {
 	if !ok {
 		metric = NewMetric(self.duration, self.dt, ts)
 		self.metrics[metric_name] = metric
+		self.split_metric_names[metric_name] = strings.Split(metric_name, ".")
 	}
 	metric.Store(float32(value), ts)
+}
+
+func (self *Storage) RemoveMetric(metric_name string) {
+	delete(self.metrics, metric_name)
+	delete(self.split_metric_names, metric_name)
 }
 
 func (self *Storage) MetricCount() int {
@@ -102,7 +110,7 @@ func (self *Storage) SumByPeriodGroupingQuery(metric_group_patterns []string, pe
 	}
 
 	for k := range self.metrics {
-		split_k := strings.Split(k, ".")
+		split_k := self.split_metric_names[k]
 		for i := range split_patterns {
 			if matchesPattern(split_k, split_patterns[i]) {
 				this_metric_sum := self.metrics[k].GetSumsPerPeriodUntilNow(periods, now)
@@ -149,6 +157,9 @@ func (self *Storage) LoadFromFile(filename string) error {
 	err = dec.Decode(&self.metrics)
 	if err != nil {
 		return err
+	}
+	for k := range self.metrics {
+		self.split_metric_names[k] = strings.Split(k, ".")
 	}
 	return nil
 }
