@@ -5,7 +5,6 @@ import (
 	"math"
 	"bytes"
 	"strings"
-	"io/ioutil"
 	"encoding/gob"
 	"sync"
 	"log"
@@ -125,11 +124,11 @@ func (self *Storage) SumByPeriodGroupingQuery(metric_group_patterns []string, pe
 }
 
 func (self *Storage) SaveToFile(filename string) error {
-	tempfile, err := ioutil.TempFile("", "")
+	temppath := filename + ".tmp"
+	tempfile, err := os.Create(temppath)
 	if err != nil {
 		return err
 	}
-	temppath := tempfile.Name()
 
 	enc := gob.NewEncoder(tempfile)
 	err = enc.Encode(self.metrics)
