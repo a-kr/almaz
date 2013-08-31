@@ -4,6 +4,7 @@ import (
 	"os"
 	"math"
 	"bytes"
+	"strings"
 	"io/ioutil"
 	"encoding/gob"
 	"sync"
@@ -78,6 +79,41 @@ func (self *Storage) SetStorageParams(duration_hours int, precision_seconds int)
 	}
 	self.duration = duration_hours * 60 * 60
 	self.dt = precision_seconds
+}
+
+func matchesPattern (s []string, pattern []string) bool {
+	if len(s) != len(pattern) {
+		return false
+	}
+	for i := range s {
+		if pattern[i] != "*" && s[i] != pattern[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func (self *Storage) SumByPeriodGroupingQuery(metric_group_patterns []string, periods []int64, now int64) [][]float64 {
+	sums := make([][]float64, len(metric_group_patterns))
+	split_patterns := make([][]string, len(metric_group_patterns))
+	for i := range metric_group_patterns {
+		sums[i] = make([]float64, len(periods))
+		split_patterns[i] = strings.Split(metric_group_patterns[i], ".")
+	}
+
+	for k := range self.metrics {
+		split_k := strings.Split(k, ".")
+		for i := range split_patterns {
+			if matchesPattern(split_k, split_patterns[i]) {
+				this_metric_sum := self.metrics[k].GetSumsPerPeriodUntilNow(periods, now)
+				for j := range periods {
+					sums[i][j] += this_metric_sum[j]
+				}
+				break // assume metric can match only one pattern
+			}
+		}
+	}
+	return sums
 }
 
 func (self *Storage) SaveToFile(filename string) error {
