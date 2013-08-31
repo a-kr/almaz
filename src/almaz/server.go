@@ -133,13 +133,7 @@ func (self *AlmazServer) SaveToDisk() {
 }
 
 func (self *AlmazServer) ForkAndSaveToDisk() {
-	ret, _, err := syscall.Syscall(syscall.SYS_FORK, 0, 0, 0)
-	if err != 0 {
-		log.Printf("Error while forking")
-		os.Exit(2)
-	}
-	if ret > 0 {
-		// родительский процесс
+	if utils.Fork() > 0 {
 		return
 	}
 	self.SaveToDisk()
