@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"math"
 	"bytes"
 	"io/ioutil"
 	"encoding/gob"
@@ -182,6 +183,57 @@ func (self *Metric) GetSumForLastNSeconds(seconds int64, now_ts int64) float64 {
 	ts1 := now_ts - seconds
 	return self.GetSumBetween(ts1, ts2)
 }
+
+
+func (self *Metric) GetSumsPerPeriodUntilNow(periods []int64, now int64) []float64 {
+	self.RLock()
+	defer self.RUnlock()
+	dt_64 := int64(self.dt)
+	now_k := now / dt_64
+	period_starts_k := make([]int64, len(periods))
+	period_sums := make([]float64, len(periods))
+	min_k := now_k
+
+	for i := range periods {
+		period_starts_k[i] = int64(math.Ceil((float64(now) - float64(periods[i])) / float64(dt_64)))
+		if period_starts_k[i] < min_k {
+			min_k = period_starts_k[i]
+		}
+		period_sums[i] = 0.0
+	}
+
+	if now_k <= self.latest_ts_k - int64(len(self.array)) || min_k > self.latest_ts_k {
+		log.Printf("min_k %d, latest_ts_k %d, exiting", min_k, self.latest_ts_k)
+		return period_sums
+	}
+
+	if min_k <= self.latest_ts_k - int64(len(self.array)) {
+		min_k = self.latest_ts_k - int64(len(self.array)) + 1
+	}
+	if now_k > self.latest_ts_k {
+		now_k = self.latest_ts_k + 1
+	}
+
+	d_min_k := self.latest_ts_k - min_k
+	i := (self.latest_i - int(d_min_k))
+	if i < 0 {
+		i += len(self.array)
+	}
+
+	for min_k < now_k {
+		/*log.Printf("Now at %d s, index %d", min_k * dt_64, i)*/
+		for j := range periods {
+			if period_starts_k[j] <= min_k {
+				/*log.Printf(" - period %d..now gets +%f increment", periods[j], self.array[i])*/
+				period_sums[j] += float64(self.array[i])
+			}
+		}
+		i = (i + 1) % len(self.array)
+		min_k += 1
+	}
+	return period_sums
+}
+
 
 func (self *Metric) GobEncode() ([]byte, error) {
 	var sm StoredMetric
