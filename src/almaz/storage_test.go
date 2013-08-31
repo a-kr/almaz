@@ -145,3 +145,21 @@ func Test_PeriodSums(t *testing.T) {
 	AssertEqual(t, s[0], 0) // no data before 30 seconds
 	AssertEqual(t, s[1], 0)
 }
+
+func Test_GroupingQuery(t *testing.T) {
+	s := NewStorage()
+	s.SetStorageParams(1, 10) // duration in hours, precision in seconds
+	s.StoreMetric("a.a.66", 10, 55)
+	s.StoreMetric("a.a.66", 12, 72)
+	s.StoreMetric("a.a.42", 33, 66)
+	s.StoreMetric("a.b.23", 11, 63)
+	s.StoreMetric("a.b.28", 12, 63)
+	s.StoreMetric("a.b.29", 13, 63)
+	s.StoreMetric("c.b.29", 99, 63)
+
+	r := s.SumByPeriodGroupingQuery([]string{
+		"a.a.*", "a.b.*"}, []int64{80}, 78)
+	AssertEqual(t, len(r), 2)
+	AssertEqual(t, r[0][0], 10 + 12 + 33)
+	AssertEqual(t, r[1][0], 11 + 12 + 13)
+}
