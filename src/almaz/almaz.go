@@ -5,7 +5,8 @@ import (
 )
 
 var (
-	bindAddress = flag.String("address", ":7701", "address to listen on")
+	bindAddress = flag.String("address", ":7701", "address to listen on for metrics (Carbon-compatible protocol)")
+	httpAddress = flag.String("http-address", ":7702", "address to recieve queries (http)")
 	runAudits = flag.Bool("audit", false, "run audits periodically")
 	persist = flag.Bool("persist", false, "persist to disk (load at startup, save on SIGTERM/SIGINT) (see --persist-path)")
 	persistPath = flag.String("persist-path", "almaz.dat", "path to storage file")
@@ -30,5 +31,6 @@ func main() {
 		go server.AuditLoop()
 	}
 	go server.StartGraphite(*bindAddress)
+	go server.StartHttpface(*httpAddress)
 	server.WaitForTermination(*persist, *persistInterval)
 }

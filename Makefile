@@ -6,7 +6,7 @@ almaz:
 	go install almaz
 
 run: almaz
-	bin/almaz --audit
+	bin/almaz --persist
 
 test:
 	go test almaz
