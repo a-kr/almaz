@@ -9,7 +9,7 @@ var (
 	runAudits = flag.Bool("audit", false, "run audits periodically")
 	persist = flag.Bool("persist", false, "persist to disk (load at startup, save on SIGTERM/SIGINT) (see --persist-path)")
 	persistPath = flag.String("persist-path", "almaz.dat", "path to storage file")
-	persistInterval = flag.Int("persist-interval", 0, "save to disk every N seconds (0 --- do not save). Must have --persist specified.")
+	persistInterval = flag.Int("bgsave", 0, "save to disk every N seconds (0 --- do not save). Must have --persist specified.")
 	debug = flag.Bool("debug", false, "print additional info")
 	storageDuration = flag.Int("duration-in-hours", 24, "store metrics for last N hours")
 	storagePrecision = flag.Int("precision-in-seconds", 60, "store metrics with precision of N seconds")
@@ -29,9 +29,6 @@ func main() {
 	if *runAudits {
 		go server.AuditLoop()
 	}
-	if *persistInterval > 0 && *persist {
-		go server.BgsaveLoop(*persistInterval)
-	}
 	go server.StartGraphite(*bindAddress)
-	server.WaitForTermination(*persist)
+	server.WaitForTermination(*persist, *persistInterval)
 }

@@ -184,7 +184,7 @@ func (self *Metric) GetSumForLastNSeconds(seconds int64, now_ts int64) float64 {
 }
 
 func (self *Metric) GobEncode() ([]byte, error) {
-	var sm *StoredMetric = new(StoredMetric)
+	var sm StoredMetric
 	var buf bytes.Buffer
 	sm.Array = self.array
 	sm.Dt = self.dt
@@ -192,7 +192,7 @@ func (self *Metric) GobEncode() ([]byte, error) {
 	sm.Latest_i = self.latest_i
 	sm.Latest_ts_k = self.latest_ts_k
 	enc := gob.NewEncoder(&buf)
-	err := enc.Encode(sm)
+	err := enc.Encode(&sm)
 	if err != nil {
 		return nil, err
 	}
@@ -200,7 +200,7 @@ func (self *Metric) GobEncode() ([]byte, error) {
 }
 
 func (self *Metric) GobDecode(_bytes []byte) error {
-	var sm *StoredMetric = new(StoredMetric)
+	var sm StoredMetric
 	buf := bytes.NewBuffer(_bytes)
 	dec := gob.NewDecoder(buf)
 	err := dec.Decode(&sm)

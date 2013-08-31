@@ -12,6 +12,7 @@ import (
 	"strings"
 	"strconv"
 	"regexp"
+	"utils"
 )
 
 type AlmazServer struct {
@@ -131,6 +132,20 @@ func (self *AlmazServer) SaveToDisk() {
 	}
 }
 
+func (self *AlmazServer) ForkAndSaveToDisk() {
+	ret, _, err := syscall.Syscall(syscall.SYS_FORK, 0, 0, 0)
+	if err != 0 {
+		log.Printf("Error while forking")
+		os.Exit(2)
+	}
+	if ret > 0 {
+		// родительский процесс
+		return
+	}
+	self.SaveToDisk()
+	os.Exit(0)
+}
+
 func (self *AlmazServer) BgsaveLoop(interval_seconds int) {
 	for {
 		time.Sleep(time.Duration(interval_seconds) * time.Second)
@@ -138,13 +153,31 @@ func (self *AlmazServer) BgsaveLoop(interval_seconds int) {
 	}
 }
 
-func (self *AlmazServer) WaitForTermination(persist_on_exit bool) {
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, syscall.SIGINT, syscall.SIGTERM)
+func (self *AlmazServer) WaitForTermination(persist_on_exit bool, bgsave_interval int) {
+	var bgsave_int_duration = time.Duration(bgsave_interval) * time.Second
+	if !persist_on_exit {
+		bgsave_int_duration = time.Duration(60) * time.Second
+	}
 
-	s := <-c
-	log.Printf("Got signal:", s)
-	if persist_on_exit {
-		self.SaveToDisk()
+	impeding_death := make(chan os.Signal, 1)
+	signal.Notify(impeding_death, syscall.SIGINT, syscall.SIGTERM)
+
+	utils.IgnoreDeadChildren()
+
+	bgsave_ticker := time.NewTicker(bgsave_int_duration)
+
+	for {
+		select {
+			case <-bgsave_ticker.C:
+				if persist_on_exit {
+					self.ForkAndSaveToDisk()
+				}
+			case s := <-impeding_death:
+				log.Printf("Got signal:", s)
+				if persist_on_exit {
+					self.SaveToDisk()
+				}
+				return
+		}
 	}
 }
