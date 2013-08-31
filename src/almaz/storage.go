@@ -1,6 +1,10 @@
 package main
 
 import (
+	"os"
+	"bytes"
+	"io/ioutil"
+	"encoding/gob"
 	"sync"
 	"log"
 )
@@ -23,6 +27,14 @@ type Metric struct {
 	duration int
 	latest_i int
 	latest_ts_k int64 // == timestamp / dt
+}
+
+type StoredMetric struct {
+	Array []float32
+	Dt int
+	Duration int
+	Latest_i int
+	Latest_ts_k int64
 }
 
 func NewStorage() *Storage {
@@ -65,6 +77,43 @@ func (self *Storage) SetStorageParams(duration_hours int, precision_seconds int)
 	}
 	self.duration = duration_hours * 60 * 60
 	self.dt = precision_seconds
+}
+
+func (self *Storage) SaveToFile(filename string) error {
+	tempfile, err := ioutil.TempFile("", "")
+	if err != nil {
+		return err
+	}
+	temppath := tempfile.Name()
+
+	enc := gob.NewEncoder(tempfile)
+	err = enc.Encode(self.metrics)
+	if err != nil {
+		tempfile.Close()
+		os.Remove(temppath)
+		return err
+	}
+	tempfile.Close()
+	err = os.Rename(temppath, filename)
+	if err != nil {
+		os.Remove(temppath)
+		return err
+	}
+	return nil
+}
+
+func (self *Storage) LoadFromFile(filename string) error {
+	file, err := os.Open(filename)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	dec := gob.NewDecoder(file)
+	err = dec.Decode(&self.metrics)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func (self *Metric) Store(value float32, ts int64) {
@@ -132,4 +181,36 @@ func (self *Metric) GetSumForLastNSeconds(seconds int64, now_ts int64) float64 {
 	ts2 := now_ts + int64(self.dt)
 	ts1 := now_ts - seconds
 	return self.GetSumBetween(ts1, ts2)
+}
+
+func (self *Metric) GobEncode() ([]byte, error) {
+	var sm *StoredMetric = new(StoredMetric)
+	var buf bytes.Buffer
+	sm.Array = self.array
+	sm.Dt = self.dt
+	sm.Duration = self.duration
+	sm.Latest_i = self.latest_i
+	sm.Latest_ts_k = self.latest_ts_k
+	enc := gob.NewEncoder(&buf)
+	err := enc.Encode(sm)
+	if err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+func (self *Metric) GobDecode(_bytes []byte) error {
+	var sm *StoredMetric = new(StoredMetric)
+	buf := bytes.NewBuffer(_bytes)
+	dec := gob.NewDecoder(buf)
+	err := dec.Decode(&sm)
+	if err != nil {
+		return err
+	}
+	self.array = sm.Array
+	self.dt = sm.Dt
+	self.duration = sm.Duration
+	self.latest_i = sm.Latest_i
+	self.latest_ts_k = sm.Latest_ts_k
+	return nil
 }

@@ -1,9 +1,13 @@
 package main
 
 import (
+	"os"
 	"log"
 	"net"
 	"time"
+	"sync"
+	"os/signal"
+	"syscall"
 	"bufio"
 	"strings"
 	"strconv"
@@ -11,14 +15,17 @@ import (
 )
 
 type AlmazServer struct {
+	sync.RWMutex
 	acceptance_regexen []*regexp.Regexp
 	storage *Storage
+	persist_path string
 }
 
-func NewAlmazServer() *AlmazServer {
+func NewAlmazServer(persist_path string) *AlmazServer {
 	s := new(AlmazServer)
 	s.acceptance_regexen = make([]*regexp.Regexp, 0)
 	s.storage = NewStorage()
+	s.persist_path = persist_path
 	return s
 }
 
@@ -46,6 +53,8 @@ func (self *AlmazServer) StartGraphite(bindAddress string) {
 
 func (self *AlmazServer) handleGraphiteConnection(conn net.Conn) {
 	defer conn.Close()
+	self.RLock()
+	defer self.RUnlock()
 	t1 := time.Now()
 	scanner := bufio.NewScanner(conn)
 	for scanner.Scan() {
@@ -89,5 +98,53 @@ func (self *AlmazServer) AuditLoop() {
 	for {
 		time.Sleep(30 * time.Second)
 		log.Printf("Audit: metric number = %d", self.storage.MetricCount())
+	}
+}
+
+func (self *AlmazServer) LoadFromDisk() {
+	self.Lock()
+	defer self.Unlock()
+	log.Printf("Restoring from disk...")
+	t1 := time.Now()
+	err := self.storage.LoadFromFile(self.persist_path)
+	if err != nil {
+		log.Printf("Error while loading from disk: %s", err)
+	} else {
+		t2 := time.Now()
+		dt := t2.Sub(t1)
+		log.Printf("Done loading (%s)", dt)
+	}
+}
+
+func (self *AlmazServer) SaveToDisk() {
+	self.Lock()
+	defer self.Unlock()
+	log.Printf("Saving to disk...")
+	t1 := time.Now()
+	err := self.storage.SaveToFile(self.persist_path)
+	if err != nil {
+		log.Printf("Error while saving to disk: %s", err)
+	} else {
+		t2 := time.Now()
+		dt := t2.Sub(t1)
+		log.Printf("Done saving (%s)", dt)
+	}
+}
+
+func (self *AlmazServer) BgsaveLoop(interval_seconds int) {
+	for {
+		time.Sleep(time.Duration(interval_seconds) * time.Second)
+		self.SaveToDisk()
+	}
+}
+
+func (self *AlmazServer) WaitForTermination(persist_on_exit bool) {
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, syscall.SIGINT, syscall.SIGTERM)
+
+	s := <-c
+	log.Printf("Got signal:", s)
+	if persist_on_exit {
+		self.SaveToDisk()
 	}
 }
