@@ -10,7 +10,7 @@ const (
 )
 
 func Wait() {
-	_, _, errno := syscall.Syscall6(syscall.SYS_WAITID,
+	_, _, errno := syscall.RawSyscall6(syscall.SYS_WAITID,
 		P_ALL, 0, 0, syscall.WEXITED, 0, 0)
 	if errno != 0 {
 		log.Fatalf("Error while waiting: %d", errno)
@@ -18,7 +18,7 @@ func Wait() {
 }
 
 func Fork() int {
-	childpid, _, errno := syscall.Syscall(syscall.SYS_FORK, 0, 0, 0)
+	childpid, _, errno := syscall.RawSyscall(syscall.SYS_FORK, 0, 0, 0)
 	if errno != 0 {
 		log.Fatalf("Error while forking: %d", errno)
 	}
