@@ -78,7 +78,7 @@ func (self *AlmazServer) http_list_group(w http.ResponseWriter, r *http.Request)
 	}
 
 	var results [][]float64
-	results = self.storage.SumByPeriodGroupingQuery(groups, periods, now)
+	results = self.storage.SumByPeriodGroupingQuery(groups, periods, now, true)
 	for k := range groups {
 		fmt.Fprintf(w, "%s", groups[k])
 		for _, el := range results[k] {

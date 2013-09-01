@@ -158,7 +158,7 @@ func Test_GroupingQuery(t *testing.T) {
 	s.StoreMetric("c.b.29", 99, 63)
 
 	r := s.SumByPeriodGroupingQuery([]string{
-		"a.a.*", "a.b.*"}, []int64{80}, 78)
+		"a.a.*", "a.b.*"}, []int64{80}, 78, false)
 	AssertEqual(t, len(r), 2)
 	AssertEqual(t, r[0][0], 10 + 12 + 33)
 	AssertEqual(t, r[1][0], 11 + 12 + 13)

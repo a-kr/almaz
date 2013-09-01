@@ -8,6 +8,7 @@ import (
 	"encoding/gob"
 	"sync"
 	"log"
+	_ "utils"
 )
 
 const (
@@ -100,7 +101,7 @@ func matchesPattern (s []string, pattern []string) bool {
 	return true
 }
 
-func (self *Storage) SumByPeriodGroupingQuery(metric_group_patterns []string, periods []int64, now int64) [][]float64 {
+func (self *Storage) SumByPeriodGroupingQuery(metric_group_patterns []string, periods []int64, now int64, interpolate bool) [][]float64 {
 	sums := make([][]float64, len(metric_group_patterns))
 	split_patterns := make([][]string, len(metric_group_patterns))
 	for i := range metric_group_patterns {
@@ -112,7 +113,7 @@ func (self *Storage) SumByPeriodGroupingQuery(metric_group_patterns []string, pe
 		split_k := self.split_metric_names[k]
 		for i := range split_patterns {
 			if matchesPattern(split_k, split_patterns[i]) {
-				this_metric_sum := self.metrics[k].GetSumsPerPeriodUntilNow(periods, now)
+				this_metric_sum := self.metrics[k].GetSumsPerPeriodUntilNowWithInterpolation(periods, now, interpolate)
 				for j := range periods {
 					sums[i][j] += this_metric_sum[j]
 				}
@@ -243,8 +244,11 @@ func (self *Metric) GetSumForLastNSeconds(seconds int64, now_ts int64) float64 {
 	return self.GetSumBetween(ts1, ts2)
 }
 
-
 func (self *Metric) GetSumsPerPeriodUntilNow(periods []int64, now int64) []float64 {
+	return self.GetSumsPerPeriodUntilNowWithInterpolation(periods, now, false)
+}
+
+func (self *Metric) GetSumsPerPeriodUntilNowWithInterpolation(periods []int64, now int64, interpolate bool) []float64 {
 	self.RLock()
 	defer self.RUnlock()
 	dt_64 := int64(self.dt)
@@ -252,9 +256,19 @@ func (self *Metric) GetSumsPerPeriodUntilNow(periods []int64, now int64) []float
 	period_starts_k := make([]int64, len(periods))
 	period_sums := make([]float64, len(periods))
 	min_k := now_k
+	k_intr := float64(now - now_k * dt_64) / float64(self.dt)
+	/*log.Printf("now: %d, now_k * dt_64: %d, k_intr: %f", now, now_k * dt_64, k_intr)*/
 
 	for i := range periods {
 		period_starts_k[i] = int64(math.Ceil((float64(now) - float64(periods[i])) / float64(dt_64)))
+		if i == 0 {
+			/*log.Printf("[1]: %d, [1]_k * dt_64: %d", now - periods[i], period_starts_k[i])*/
+		}
+		/*if period_starts_k[i] > utils.Min(now_k, self.latest_ts_k) {*/
+			/*// HACK*/
+			/*log.Printf("amending period start: was %d, is now %d", period_starts_k[i], utils.Min(now_k, self.latest_ts_k))*/
+			/*period_starts_k[i] = utils.Min(now_k, self.latest_ts_k)*/
+		/*}*/
 		if period_starts_k[i] < min_k {
 			min_k = period_starts_k[i]
 		}
@@ -262,16 +276,16 @@ func (self *Metric) GetSumsPerPeriodUntilNow(periods []int64, now int64) []float
 	}
 
 	if now_k <= self.latest_ts_k - int64(len(self.array)) || min_k > self.latest_ts_k {
-		/*log.Printf("min_k %d, latest_ts_k %d, exiting", min_k, self.latest_ts_k)*/
 		return period_sums
 	}
 
 	if min_k <= self.latest_ts_k - int64(len(self.array)) {
 		min_k = self.latest_ts_k - int64(len(self.array)) + 1
 	}
-	if now_k > self.latest_ts_k {
-		now_k = self.latest_ts_k
-	}
+	//if now_k > self.latest_ts_k {
+	//	log.Printf("Amending now_k from %d to %d", now_k, self.latest_ts_k)
+	//	now_k = self.latest_ts_k
+	//}
 
 	d_min_k := self.latest_ts_k - min_k
 	i := (self.latest_i - int(d_min_k))
@@ -279,18 +293,38 @@ func (self *Metric) GetSumsPerPeriodUntilNow(periods []int64, now int64) []float
 		i += len(self.array)
 	}
 
+	prev_val := 0.0
+	/*log.Printf("min_k %d, now_k %d", min_k, now_k)*/
 	for min_k <= now_k {
-		/*log.Printf("Now at %d s, index %d", min_k * dt_64, i)*/
-		for j := range periods {
-			if period_starts_k[j] <= min_k {
-				/*log.Printf(" - period %d..now gets +%f increment", periods[j], self.array[i])*/
-				period_sums[j] += float64(self.array[i])
+		var current_val float64
+		if min_k <= self.latest_ts_k {
+			current_val = float64(self.array[i])
+		} else {
+			current_val = 0.0
+		}
+		interpolated_val := current_val
+		if interpolate {
+			interpolated_val = (1 - k_intr) * prev_val
+			interpolated_val += k_intr * current_val
+			if min_k < now_k {
+				interpolated_val += k_intr * current_val
+			} else {
+				interpolated_val += current_val
 			}
 		}
+		/*log.Printf("min_k %d, interpval %f, period_starts_k[0] %d", min_k, interpolated_val, period_starts_k[0])*/
+		for j := range periods {
+			if period_starts_k[j] <= min_k {
+				period_sums[j] += interpolated_val
+				if j == 0 {
+					/*log.Printf("prev %f, cur %f", prev_val, current_val)*/
+				}
+			}
+		}
+		prev_val = current_val
 		i = (i + 1) % len(self.array)
 		min_k += 1
 	}
-	/*log.Printf("Now is %d s, index %d", now, int(now_k) % len(self.array))*/
 	return period_sums
 }
 
