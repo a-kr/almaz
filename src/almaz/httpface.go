@@ -3,6 +3,9 @@ package main
 import (
 	"log"
 	"time"
+	"bufio"
+	"strings"
+	"strconv"
 	"fmt"
 	"net/http"
 	_ "net/http/pprof"
@@ -43,12 +46,36 @@ func (self *AlmazServer) http_list_group(w http.ResponseWriter, r *http.Request)
 	self.RLock()
 	defer self.RUnlock()
 
-	periods := []int64{60, 15*60, 60*60, 4*60*60, 24*60*60}
-	groups := []string{
-		"stats_counts.adv.shows.*.164.*",
-		"stats_counts.adv.shows.*.165.*",
-		"stats_counts.adv.shows.*.166.*"}
 	now := time.Now().Unix()
+
+	defer r.Body.Close()
+	scanner := bufio.NewScanner(r.Body)
+	ok := scanner.Scan()
+	if !ok {
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprintf(w, "400 Bad Request\r\n")
+		fmt.Fprintf(w, "Use POST method and specify period durations in seconds ")
+		fmt.Fprintf(w, "on the first line of request data.\n")
+		return
+	}
+	periods_str := strings.Split(scanner.Text(), " ")
+
+	periods := make([]int64, len(periods_str))
+	for i := range periods_str {
+		period, err := strconv.ParseInt(periods_str[i], 10, 64)
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprintf(w, "400 Bad Request\r\n")
+			fmt.Fprintf(w, "%s", err)
+			return
+		}
+		periods[i] = period
+	}
+
+	groups := make([]string, 0)
+	for scanner.Scan() {
+		groups = append(groups, scanner.Text())
+	}
 
 	var results [][]float64
 	results = self.storage.SumByPeriodGroupingQuery(groups, periods, now)
