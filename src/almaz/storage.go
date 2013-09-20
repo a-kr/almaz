@@ -270,7 +270,6 @@ func (self *Metric) GetSumsPerPeriodUntilNowWithInterpolation(periods []int64, n
 		period_sums[i] = 0.0
 		if interpolate {
 			additional_piece := (1 - k_intr) * self.GetValueAt(period_start_ts)
-			log.Printf("additional piece: %f, k_intr = %f", additional_piece, k_intr)
 			period_sums[i] += additional_piece
 		}
 	}
