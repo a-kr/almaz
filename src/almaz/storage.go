@@ -257,22 +257,22 @@ func (self *Metric) GetSumsPerPeriodUntilNowWithInterpolation(periods []int64, n
 	period_sums := make([]float64, len(periods))
 	min_k := now_k
 	k_intr := float64(now - now_k * dt_64) / float64(self.dt)
-	/*log.Printf("now: %d, now_k * dt_64: %d, k_intr: %f", now, now_k * dt_64, k_intr)*/
+	if now == now_k * dt_64 {
+		k_intr = 1.0
+	}
 
 	for i := range periods {
-		period_starts_k[i] = int64(math.Ceil((float64(now) - float64(periods[i])) / float64(dt_64)))
-		if i == 0 {
-			/*log.Printf("[1]: %d, [1]_k * dt_64: %d", now - periods[i], period_starts_k[i])*/
-		}
-		/*if period_starts_k[i] > utils.Min(now_k, self.latest_ts_k) {*/
-			/*// HACK*/
-			/*log.Printf("amending period start: was %d, is now %d", period_starts_k[i], utils.Min(now_k, self.latest_ts_k))*/
-			/*period_starts_k[i] = utils.Min(now_k, self.latest_ts_k)*/
-		/*}*/
+		period_start_ts := now - periods[i]
+		period_starts_k[i] = int64(math.Ceil(float64(period_start_ts) / float64(dt_64)))
 		if period_starts_k[i] < min_k {
 			min_k = period_starts_k[i]
 		}
 		period_sums[i] = 0.0
+		if interpolate {
+			additional_piece := (1 - k_intr) * self.GetValueAt(period_start_ts)
+			log.Printf("additional piece: %f, k_intr = %f", additional_piece, k_intr)
+			period_sums[i] += additional_piece
+		}
 	}
 
 	if now_k <= self.latest_ts_k - int64(len(self.array)) || min_k > self.latest_ts_k {
@@ -282,10 +282,6 @@ func (self *Metric) GetSumsPerPeriodUntilNowWithInterpolation(periods []int64, n
 	if min_k <= self.latest_ts_k - int64(len(self.array)) {
 		min_k = self.latest_ts_k - int64(len(self.array)) + 1
 	}
-	//if now_k > self.latest_ts_k {
-	//	log.Printf("Amending now_k from %d to %d", now_k, self.latest_ts_k)
-	//	now_k = self.latest_ts_k
-	//}
 
 	d_min_k := self.latest_ts_k - min_k
 	i := (self.latest_i - int(d_min_k))
@@ -293,8 +289,6 @@ func (self *Metric) GetSumsPerPeriodUntilNowWithInterpolation(periods []int64, n
 		i += len(self.array)
 	}
 
-	prev_val := 0.0
-	/*log.Printf("min_k %d, now_k %d", min_k, now_k)*/
 	for min_k <= now_k {
 		var current_val float64
 		if min_k <= self.latest_ts_k {
@@ -302,26 +296,11 @@ func (self *Metric) GetSumsPerPeriodUntilNowWithInterpolation(periods []int64, n
 		} else {
 			current_val = 0.0
 		}
-		interpolated_val := current_val
-		if interpolate {
-			interpolated_val = (1 - k_intr) * prev_val
-			interpolated_val += k_intr * current_val
-			if min_k < now_k {
-				interpolated_val += k_intr * current_val
-			} else {
-				interpolated_val += current_val
-			}
-		}
-		/*log.Printf("min_k %d, interpval %f, period_starts_k[0] %d", min_k, interpolated_val, period_starts_k[0])*/
 		for j := range periods {
 			if period_starts_k[j] <= min_k {
-				period_sums[j] += interpolated_val
-				if j == 0 {
-					/*log.Printf("prev %f, cur %f", prev_val, current_val)*/
-				}
+				period_sums[j] += current_val
 			}
 		}
-		prev_val = current_val
 		i = (i + 1) % len(self.array)
 		min_k += 1
 	}
