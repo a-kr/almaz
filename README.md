@@ -42,7 +42,7 @@ Almaz backend for statsd
 ```
 , almazPort: 7701
 , almazHost: "localhost 
-e``
+```
  * Add *almaz* backend to the list of backends
 ```
 , backends: [ "./backends/graphite", "./backends/almaz" ]
