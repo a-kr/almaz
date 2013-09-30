@@ -16,6 +16,8 @@ func (self *AlmazServer) StartHttpface(bindAddress string) {
     http.HandleFunc("/", self.http_main)
     http.HandleFunc("/list/all/", self.http_list_all)
     http.HandleFunc("/list/group/", self.http_list_group)
+    http.HandleFunc("/almaz/list/all/", self.http_list_all)
+    http.HandleFunc("/almaz/list/group/", self.http_list_group)
     http.ListenAndServe(bindAddress, nil)
 }
 
