@@ -15,8 +15,10 @@ func (self *AlmazServer) StartHttpface(bindAddress string) {
     log.Printf("Http interface available at %s", bindAddress)
     http.HandleFunc("/", self.http_main)
     http.HandleFunc("/list/all/", self.http_list_all)
+    http.HandleFunc("/list/all-interpolated/", self.http_list_all_smooth)
     http.HandleFunc("/list/group/", self.http_list_group)
     http.HandleFunc("/almaz/list/all/", self.http_list_all)
+    http.HandleFunc("/almaz/list/all-interpolated/", self.http_list_all_smooth)
     http.HandleFunc("/almaz/list/group/", self.http_list_group)
     http.ListenAndServe(bindAddress, nil)
 }
@@ -28,6 +30,14 @@ func (self *AlmazServer) http_main(w http.ResponseWriter, r *http.Request) {
 }
 
 func (self *AlmazServer) http_list_all(w http.ResponseWriter, r *http.Request) {
+	self.http_list_all_with_interpolation(w, r, false)
+}
+
+func (self *AlmazServer) http_list_all_smooth(w http.ResponseWriter, r *http.Request) {
+	self.http_list_all_with_interpolation(w, r, true)
+}
+
+func (self *AlmazServer) http_list_all_with_interpolation(w http.ResponseWriter, r *http.Request, interpolate bool) {
 	self.RLock()
 	defer self.RUnlock()
 
@@ -36,7 +46,7 @@ func (self *AlmazServer) http_list_all(w http.ResponseWriter, r *http.Request) {
 
 	for k := range self.storage.metrics {
 		fmt.Fprintf(w, "%s", k)
-		counts_per_period := self.storage.metrics[k].GetSumsPerPeriodUntilNow(periods, now)
+		counts_per_period := self.storage.metrics[k].GetSumsPerPeriodUntilNowWithInterpolation(periods, now, interpolate)
 		for _, el := range counts_per_period {
 			fmt.Fprintf(w, "\t%f", el)
 		}
