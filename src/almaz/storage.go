@@ -1,42 +1,41 @@
 package main
 
 import (
-	"os"
-	"math"
 	"bytes"
-	"strings"
 	"encoding/gob"
-	"sync"
 	"log"
-	_ "utils"
+	"math"
+	"os"
+	"strings"
+	"sync"
 )
 
 const (
 	DEFAULT_DURATION = 24 * 60 * 60
-	DEFAULT_DT = 60
+	DEFAULT_DT       = 60
 )
 
 type Storage struct {
-	metrics map[string]*Metric
-	split_metric_names map[string][]string
+	metrics  map[string]*Metric
 	duration int
-	dt int
+	dt       int
 }
 
 type Metric struct {
 	sync.RWMutex
-	array []float32
-	dt int
-	duration int
-	latest_i int
+	array       []float32
+	dt          int
+	duration    int
+	latest_i    int
 	latest_ts_k int64 // == timestamp / dt
+	splitName   []string
 }
 
 type StoredMetric struct {
-	Array []float32
-	Dt int
-	Duration int
-	Latest_i int
+	Array       []float32
+	Dt          int
+	Duration    int
+	Latest_i    int
 	Latest_ts_k int64
 }
 
@@ -45,16 +44,16 @@ func NewStorage() *Storage {
 	s.duration = DEFAULT_DURATION
 	s.dt = DEFAULT_DT
 	s.metrics = make(map[string]*Metric)
-	s.split_metric_names = make(map[string][]string)
 	return s
 }
 
-func NewMetric(duration int, dt int, starting_ts int64) *Metric {
+func NewMetric(duration, dt int, starting_ts int64, name string) *Metric {
 	m := new(Metric)
+	m.splitName = strings.Split(name, ".")
 	m.latest_i = 0
 	m.duration = duration
 	m.dt = dt
-	m.array = make([]float32, duration / dt)
+	m.array = make([]float32, duration/dt)
 	m.latest_ts_k = starting_ts / int64(dt)
 	return m
 }
@@ -62,16 +61,16 @@ func NewMetric(duration int, dt int, starting_ts int64) *Metric {
 func (self *Storage) StoreMetric(metric_name string, value float64, ts int64) {
 	metric, ok := self.metrics[metric_name]
 	if !ok {
-		metric = NewMetric(self.duration, self.dt, ts)
+		metric = NewMetric(self.duration, self.dt, ts, metric_name)
+		metric.array[0] += float32(value)
 		self.metrics[metric_name] = metric
-		self.split_metric_names[metric_name] = strings.Split(metric_name, ".")
+		return
 	}
 	metric.Store(float32(value), ts)
 }
 
 func (self *Storage) RemoveMetric(metric_name string) {
 	delete(self.metrics, metric_name)
-	delete(self.split_metric_names, metric_name)
 }
 
 func (self *Storage) MetricCount() int {
@@ -89,7 +88,7 @@ func (self *Storage) SetStorageParams(duration_hours int, precision_seconds int)
 	self.dt = precision_seconds
 }
 
-func matchesPattern (s []string, pattern []string) bool {
+func matchesPattern(s []string, pattern []string) bool {
 	if len(s) != len(pattern) {
 		return false
 	}
@@ -109,11 +108,10 @@ func (self *Storage) SumByPeriodGroupingQuery(metric_group_patterns []string, pe
 		split_patterns[i] = strings.Split(metric_group_patterns[i], ".")
 	}
 
-	for k := range self.metrics {
-		split_k := self.split_metric_names[k]
+	for _, m := range self.metrics {
 		for i := range split_patterns {
-			if matchesPattern(split_k, split_patterns[i]) {
-				this_metric_sum := self.metrics[k].GetSumsPerPeriodUntilNowWithInterpolation(periods, now, interpolate)
+			if matchesPattern(m.splitName, split_patterns[i]) {
+				this_metric_sum := m.GetSumsPerPeriodUntilNowWithInterpolation(periods, now, interpolate)
 				for j := range periods {
 					sums[i][j] += this_metric_sum[j]
 				}
@@ -158,9 +156,6 @@ func (self *Storage) LoadFromFile(filename string) error {
 	if err != nil {
 		return err
 	}
-	for k := range self.metrics {
-		self.split_metric_names[k] = strings.Split(k, ".")
-	}
 	return nil
 }
 
@@ -183,10 +178,13 @@ func (self *Metric) Store(value float32, ts int64) {
 		self.array[i] += value
 		return
 	}
-	if ts_k > self.latest_ts_k + int64(len(self.array)) {
+	if ts_k > self.latest_ts_k+int64(len(self.array)) {
 		// jump into the future, might as well erase the entire array and start over
 		self.latest_ts_k = ts_k
 		self.latest_i = 0
+		for i := range self.array {
+			self.array[i] = 0.0
+		}
 		self.array[0] = value
 		return
 	}
@@ -202,7 +200,7 @@ func (self *Metric) GetValueAt(ts int64) float64 {
 	self.RLock()
 	defer self.RUnlock()
 	ts_k := ts / int64(self.dt)
-	if ts_k <= self.latest_ts_k - int64(len(self.array)) || ts_k > self.latest_ts_k {
+	if ts_k <= self.latest_ts_k-int64(len(self.array)) || ts_k > self.latest_ts_k {
 		return 0.0
 	}
 	d_ts_k := self.latest_ts_k - ts_k
@@ -219,11 +217,11 @@ func (self *Metric) GetSumBetween(ts1 int64, ts2 int64) float64 {
 	defer self.RUnlock()
 	ts1_k := ts1 / int64(self.dt)
 	ts2_k := ts2 / int64(self.dt)
-	if ts2_k <= self.latest_ts_k - int64(len(self.array)) || ts1_k > self.latest_ts_k {
+	if ts2_k <= self.latest_ts_k-int64(len(self.array)) || ts1_k > self.latest_ts_k {
 		return 0.0
 	}
 
-	if ts1_k <= self.latest_ts_k - int64(len(self.array)) {
+	if ts1_k <= self.latest_ts_k-int64(len(self.array)) {
 		ts1_k = self.latest_ts_k - int64(len(self.array)) + 1
 	}
 	if ts2_k > self.latest_ts_k {
@@ -263,8 +261,8 @@ func (self *Metric) GetSumsPerPeriodUntilNowWithInterpolation(periods []int64, n
 	period_starts_k := make([]int64, len(periods))
 	period_sums := make([]float64, len(periods))
 	min_k := now_k
-	k_intr := float64(now - now_k * dt_64) / float64(self.dt)
-	if now == now_k * dt_64 {
+	k_intr := float64(now-now_k*dt_64) / float64(self.dt)
+	if now == now_k*dt_64 {
 		k_intr = 1.0
 	}
 
@@ -281,11 +279,11 @@ func (self *Metric) GetSumsPerPeriodUntilNowWithInterpolation(periods []int64, n
 		}
 	}
 
-	if now_k <= self.latest_ts_k - int64(len(self.array)) || min_k > self.latest_ts_k {
+	if now_k <= self.latest_ts_k-int64(len(self.array)) || min_k > self.latest_ts_k {
 		return period_sums
 	}
 
-	if min_k <= self.latest_ts_k - int64(len(self.array)) {
+	if min_k <= self.latest_ts_k-int64(len(self.array)) {
 		min_k = self.latest_ts_k - int64(len(self.array)) + 1
 	}
 
@@ -312,7 +310,6 @@ func (self *Metric) GetSumsPerPeriodUntilNowWithInterpolation(periods []int64, n
 	}
 	return period_sums
 }
-
 
 func (self *Metric) GobEncode() ([]byte, error) {
 	var sm StoredMetric
