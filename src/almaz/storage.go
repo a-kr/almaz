@@ -178,10 +178,13 @@ func (self *Metric) Store(value float32, ts int64) {
 		self.array[i] += value
 		return
 	}
-	if ts_k > self.latest_ts_k + int64(len(self.array)) {
+	if ts_k > self.latest_ts_k+int64(len(self.array)) {
 		// jump into the future, might as well erase the entire array and start over
 		self.latest_ts_k = ts_k
 		self.latest_i = 0
+		for i := range self.array {
+			self.array[i] = 0.0
+		}
 		self.array[0] = value
 		return
 	}
