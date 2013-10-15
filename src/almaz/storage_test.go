@@ -98,6 +98,23 @@ func Test_LateArrivals(t *testing.T) {
 	AssertEqual(t, m.GetValueAt(73), 10)
 }
 
+func Test_FarFuture(t *testing.T) {
+	m := NewMetric(60, 10, 1, "carbon.test")
+	m.Store(1, 1)     // bucket 0
+	m.Store(12, 12)   // bucket 1
+	m.Store(38, 38)   // bucket 3
+	m.Store(55, 55)   // bucket 5
+	m.Store(64, 64)   // bucket 0
+	m.Store(200, 200) // bucket 2
+	AssertEqual(t, m.array[0], 200)
+	for _, v := range m.array[1:] {
+		AssertEqual(t, v, 0.0)
+	}
+	AssertEqual(t, m.latest_i, 0)
+	AssertEqual(t, m.latest_ts_k, 20)
+
+}
+
 func Test_PeriodSums(t *testing.T) {
 	m := NewMetric(60, 10, 1, "carbon.test")
 	m.Store(1, 1)   // bucket 0
