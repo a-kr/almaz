@@ -57,6 +57,19 @@ func (self *AlmazServer) handleGraphiteConnection(conn net.Conn) {
 	self.RLock()
 	defer self.RUnlock()
 	t1 := time.Now()
+
+	var fwd_conn net.Conn = nil
+	var err error
+
+	if *fwdAddress != "" {
+		fwd_conn, err = net.Dial("tcp", *fwdAddress)
+		if err != nil {
+			//log.Printf("forward conn error: %s", err)
+		} else {
+			defer fwd_conn.Close()
+		}
+	}
+
 	scanner := bufio.NewScanner(conn)
 	for scanner.Scan() {
 		trimmedString := scanner.Text()
@@ -84,6 +97,9 @@ func (self *AlmazServer) handleGraphiteConnection(conn net.Conn) {
 			if accepted {
 				self.storage.StoreMetric(metric, value, ts)
 			}
+		}
+		if fwd_conn != nil {
+			fwd_conn.Write([]byte(trimmedString + "\n"))
 		}
 	}
 	t2 := time.Now()
