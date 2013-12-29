@@ -13,6 +13,8 @@ import (
 	"strconv"
 	"regexp"
 	"utils"
+	"encoding/json"
+	"github.com/gorilla/websocket"
 )
 
 type AlmazServer struct {
@@ -20,6 +22,12 @@ type AlmazServer struct {
 	acceptance_regexen []*regexp.Regexp
 	storage *Storage
 	persist_path string
+	subscribers []*StreamSubscriber
+	totals *Totals
+}
+
+type StreamSubscriber struct {
+	conn *websocket.Conn
 }
 
 func NewAlmazServer(persist_path string) *AlmazServer {
@@ -27,7 +35,43 @@ func NewAlmazServer(persist_path string) *AlmazServer {
 	s.acceptance_regexen = make([]*regexp.Regexp, 0)
 	s.storage = NewStorage()
 	s.persist_path = persist_path
+	s.subscribers = make([]*StreamSubscriber, 0)
+	s.totals = NewTotals()
 	return s
+}
+
+func NewStreamSubscriber(conn *websocket.Conn) *StreamSubscriber {
+	s := &StreamSubscriber{}
+	s.conn = conn
+	return s
+}
+
+func (self *AlmazServer) AddSubscriber(sub *StreamSubscriber) {
+	self.Lock()
+	defer self.Unlock()
+	self.subscribers = append(self.subscribers, sub)
+}
+
+func (self *AlmazServer) RemoveSubscriber(removed_sub *StreamSubscriber) {
+	self.Lock()
+	defer self.Unlock()
+	subs := make([]*StreamSubscriber, 0, len(self.subscribers))
+	for _, sub := range(self.subscribers) {
+		if sub != removed_sub {
+			subs = append(subs, sub)
+		}
+	}
+	self.subscribers = subs
+}
+
+func (self *AlmazServer) GetSubscribers() []*StreamSubscriber {
+	self.RLock()
+	defer self.RUnlock()
+	subs := make([]*StreamSubscriber, 0, len(self.subscribers))
+	for _, sub := range(self.subscribers) {
+		subs = append(subs, sub)
+	}
+	return subs
 }
 
 func (self *AlmazServer) AddAcceptanceRegex(re string) {
@@ -52,6 +96,20 @@ func (self *AlmazServer) StartGraphite(bindAddress string) {
 	}
 }
 
+type MetricUpdate struct {
+	Metric string `json:"metric"`
+	Value int `json:"value"`
+	TotalValue int `json:"total_value"`
+}
+
+func NewMetricUpdate(metric string, value float64, total int) *MetricUpdate {
+	upd := &MetricUpdate{}
+	upd.Metric = metric
+	upd.Value = int(value)
+	upd.TotalValue = total
+	return upd
+}
+
 func (self *AlmazServer) handleGraphiteConnection(conn net.Conn) {
 	defer conn.Close()
 	self.RLock()
@@ -60,6 +118,8 @@ func (self *AlmazServer) handleGraphiteConnection(conn net.Conn) {
 
 	var fwd_conn net.Conn = nil
 	var err error
+
+	metric_updates := make([]*MetricUpdate, 0)
 
 	if *fwdAddress != "" {
 		fwd_conn, err = net.Dial("tcp", *fwdAddress)
@@ -94,8 +154,11 @@ func (self *AlmazServer) handleGraphiteConnection(conn net.Conn) {
 					}
 				}
 			}
-			if accepted {
+			if accepted && value > 0 {
 				self.storage.StoreMetric(metric, value, ts)
+				self.totals.Increment(metric, int(value))
+				upd := NewMetricUpdate(metric, value, 0)
+				metric_updates = append(metric_updates, upd)
 			}
 		}
 		if fwd_conn != nil {
@@ -104,17 +167,86 @@ func (self *AlmazServer) handleGraphiteConnection(conn net.Conn) {
 	}
 	t2 := time.Now()
 	dt := t2.Sub(t1)
+	go self.PushUpstream(metric_updates)
 	if *debug {
 		log.Printf("Processed metrics batch in %s; storing %d metrics now",
 			dt.String(), self.storage.MetricCount())
 	}
 }
 
+func (self *AlmazServer) AggregateByPreLastPart(metric_updates []*MetricUpdate) []*MetricUpdate {
+	by_part := make(map[string]int)
+	totals := make(map[string]int)
+	for _, upd := range(metric_updates) {
+		parts := strings.Split(upd.Metric, ".")
+		i := len(parts) - 2
+		if i < 0 {
+			continue
+		}
+		key := parts[i]
+		by_part[key] += upd.Value
+		totals[key] += self.totals.Get(upd.Metric)
+	}
+	aggregated_updates := make([]*MetricUpdate, 0, len(metric_updates))
+	for key, v := range(by_part) {
+		upd := NewMetricUpdate(key, float64(v), totals[key])
+		aggregated_updates = append(aggregated_updates, upd)
+	}
+	return aggregated_updates
+}
+
+func (self *AlmazServer) PushUpstream(metric_updates []*MetricUpdate) {
+	agg_updates := self.AggregateByPreLastPart(metric_updates)
+	subscribers := self.GetSubscribers()
+	for _, upd := range(agg_updates) {
+		if upd.Value == 0 {
+			continue
+		}
+		json_bytes, err := json.Marshal(upd)
+		if err != nil {
+			log.Printf("json encode error: %s", err)
+			continue
+		}
+		for _, sub := range(subscribers) {
+			if sub.conn == nil {
+				continue
+			}
+			err = sub.conn.WriteMessage(websocket.TextMessage, json_bytes)
+			if err != nil {
+				log.Printf("WriteMessage error: %s", err)
+				sub.conn = nil
+				self.RemoveSubscriber(sub)
+			}
+		}
+	}
+}
 
 func (self *AlmazServer) AuditLoop() {
 	for {
-		time.Sleep(30 * time.Second)
+		time.Sleep(33 * time.Second)
+		self.PruneOld()
 		log.Printf("Audit: metric number = %d", self.storage.MetricCount())
+	}
+}
+
+func (self *AlmazServer) PruneOld() {
+	self.Lock()
+	defer self.Unlock()
+	ts := time.Now().Unix()
+
+	to_remove := make([]string, 0)
+
+	for name, metric := range(self.storage.metrics) {
+		if metric.Age() < ts {
+			to_remove = append(to_remove, name)
+		}
+	}
+
+	for _, name := range(to_remove) {
+		self.storage.RemoveMetric(name)
+	}
+	if len(to_remove) > 0 {
+		log.Printf("%d old metrics pruned", len(to_remove))
 	}
 }
 

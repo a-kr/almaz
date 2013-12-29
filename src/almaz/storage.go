@@ -58,6 +58,7 @@ func NewMetric(duration, dt int, starting_ts int64, name string) *Metric {
 	return m
 }
 
+
 func (self *Storage) StoreMetric(metric_name string, value float64, ts int64) {
 	metric, ok := self.metrics[metric_name]
 	if !ok {
@@ -341,4 +342,8 @@ func (self *Metric) GobDecode(_bytes []byte) error {
 	self.latest_i = sm.Latest_i
 	self.latest_ts_k = sm.Latest_ts_k
 	return nil
+}
+
+func (self *Metric) Age() int64 {
+	return self.latest_ts_k * int64(self.dt)
 }

@@ -10,3 +10,6 @@ run: almaz
 
 test:
 	go test almaz
+
+depend:
+	go get github.com/gorilla/websocket

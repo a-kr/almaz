@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net/http"
 	_ "net/http/pprof"
+	"github.com/gorilla/websocket"
 )
 
 func (self *AlmazServer) StartHttpface(bindAddress string) {
@@ -20,6 +21,7 @@ func (self *AlmazServer) StartHttpface(bindAddress string) {
     http.HandleFunc("/almaz/list/all/", self.http_list_all)
     http.HandleFunc("/almaz/list/all-interpolated/", self.http_list_all_smooth)
     http.HandleFunc("/almaz/list/group/", self.http_list_group)
+    http.HandleFunc("/almaz/stream/", self.http_stream)
     http.ListenAndServe(bindAddress, nil)
 }
 
@@ -97,5 +99,27 @@ func (self *AlmazServer) http_list_group(w http.ResponseWriter, r *http.Request)
 			fmt.Fprintf(w, "\t%f", el)
 		}
 		fmt.Fprintf(w, "\n")
+	}
+}
+
+func (self *AlmazServer) http_stream(w http.ResponseWriter, r *http.Request) {
+	ws, err := websocket.Upgrade(w, r, nil, 1024, 1024)
+	if _, ok := err.(websocket.HandshakeError); ok {
+		http.Error(w, "Not a websocket handshake", 400)
+		return
+	} else if err != nil {
+		log.Println(err)
+		return
+	}
+
+	sub := NewStreamSubscriber(ws)
+	self.AddSubscriber(sub)
+
+	for {
+		_, _, err := ws.ReadMessage()
+		if err != nil {
+			self.RemoveSubscriber(sub)
+			return
+		}
 	}
 }
