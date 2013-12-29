@@ -23,6 +23,7 @@ type AlmazServer struct {
 	storage *Storage
 	persist_path string
 	subscribers []*StreamSubscriber
+	last_pushed_update []byte
 }
 
 type StreamSubscriber struct {
@@ -35,6 +36,7 @@ func NewAlmazServer(persist_path string) *AlmazServer {
 	s.storage = NewStorage()
 	s.persist_path = persist_path
 	s.subscribers = make([]*StreamSubscriber, 0)
+	s.last_pushed_update = make([]byte, 0)
 	return s
 }
 
@@ -178,6 +180,7 @@ func (self *AlmazServer) PushUpstream(metric_updates []*MetricUpdate) {
 		log.Printf("json encode error: %s", err)
 		return
 	}
+	self.last_pushed_update = json_bytes;
 	for _, sub := range(subscribers) {
 		if sub.conn == nil {
 			continue

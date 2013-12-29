@@ -115,6 +115,8 @@ func (self *AlmazServer) http_stream(w http.ResponseWriter, r *http.Request) {
 	sub := NewStreamSubscriber(ws)
 	self.AddSubscriber(sub)
 
+	sub.conn.WriteMessage(websocket.TextMessage, self.last_pushed_update)
+
 	for {
 		_, _, err := ws.ReadMessage()
 		if err != nil {
