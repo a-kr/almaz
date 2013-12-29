@@ -23,7 +23,6 @@ type AlmazServer struct {
 	storage *Storage
 	persist_path string
 	subscribers []*StreamSubscriber
-	totals *Totals
 }
 
 type StreamSubscriber struct {
@@ -36,7 +35,6 @@ func NewAlmazServer(persist_path string) *AlmazServer {
 	s.storage = NewStorage()
 	s.persist_path = persist_path
 	s.subscribers = make([]*StreamSubscriber, 0)
-	s.totals = NewTotals()
 	return s
 }
 
@@ -155,9 +153,8 @@ func (self *AlmazServer) handleGraphiteConnection(conn net.Conn) {
 				}
 			}
 			if accepted && value > 0 {
-				self.storage.StoreMetric(metric, value, ts)
-				self.totals.Increment(metric, int(value))
-				upd := NewMetricUpdate(metric, value, 0)
+				total := self.storage.StoreMetric(metric, value, ts)
+				upd := NewMetricUpdate(metric, value, int(total))
 				metric_updates = append(metric_updates, upd)
 			}
 		}
@@ -176,16 +173,7 @@ func (self *AlmazServer) handleGraphiteConnection(conn net.Conn) {
 
 func (self *AlmazServer) PushUpstream(metric_updates []*MetricUpdate) {
 	subscribers := self.GetSubscribers()
-	updates_to_push := make([]*MetricUpdate, 0, len(metric_updates))
-	for _, upd := range(metric_updates) {
-		if upd.Value == 0 {
-			continue
-		}
-		upd.TotalValue = self.totals.Get(upd.Metric)
-		updates_to_push = append(updates_to_push, upd)
-	}
-
-	json_bytes, err := json.Marshal(updates_to_push)
+	json_bytes, err := json.Marshal(metric_updates)
 	if err != nil {
 		log.Printf("json encode error: %s", err)
 		return
@@ -226,7 +214,6 @@ func (self *AlmazServer) PruneOld() {
 
 	for _, name := range(to_remove) {
 		self.storage.RemoveMetric(name)
-		self.totals.RemoveMetric(name)
 	}
 	if len(to_remove) > 0 {
 		log.Printf("%d old metrics pruned", len(to_remove))

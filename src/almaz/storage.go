@@ -29,6 +29,7 @@ type Metric struct {
 	latest_i    int
 	latest_ts_k int64 // == timestamp / dt
 	splitName   []string
+	total       float32
 }
 
 type StoredMetric struct {
@@ -37,6 +38,7 @@ type StoredMetric struct {
 	Duration    int
 	Latest_i    int
 	Latest_ts_k int64
+	Total float32
 }
 
 func NewStorage() *Storage {
@@ -55,11 +57,12 @@ func NewMetric(duration, dt int, starting_ts int64, name string) *Metric {
 	m.dt = dt
 	m.array = make([]float32, duration/dt)
 	m.latest_ts_k = starting_ts / int64(dt)
+	m.total = 0
 	return m
 }
 
 
-func (self *Storage) StoreMetric(metric_name string, value float64, ts int64) {
+func (self *Storage) StoreMetric(metric_name string, value float64, ts int64) float64 {
 	metric, ok := self.metrics[metric_name]
 	if !ok {
 		metric = NewMetric(self.duration, self.dt, ts, metric_name)
@@ -67,7 +70,8 @@ func (self *Storage) StoreMetric(metric_name string, value float64, ts int64) {
 		self.metrics[metric_name] = metric
 		return
 	}
-	metric.Store(float32(value), ts)
+	r := metric.Store(float32(value), ts)
+	return float64(r)
 }
 
 func (self *Storage) RemoveMetric(metric_name string) {
@@ -160,11 +164,12 @@ func (self *Storage) LoadFromFile(filename string) error {
 	return nil
 }
 
-func (self *Metric) Store(value float32, ts int64) {
+func (self *Metric) Store(value float32, ts int64) float32 {
 	self.Lock()
 	defer self.Unlock()
 	dt_64 := int64(self.dt)
 	ts_k := ts / dt_64
+	self.total += value
 	/*log.Printf("(%f, %d) ts_k %d, latest_ts_k %d", value, ts, ts_k, self.latest_ts_k)*/
 	if self.latest_ts_k > ts_k {
 		// amend value in the past
@@ -174,10 +179,9 @@ func (self *Metric) Store(value float32, ts int64) {
 		}
 		if i < 0 {
 			// falls outside the storage period
-			return
+			return self.total
 		}
-		self.array[i] += value
-		return
+		return self.total
 	}
 	if ts_k > self.latest_ts_k+int64(len(self.array)) {
 		// jump into the future, might as well erase the entire array and start over
@@ -195,6 +199,7 @@ func (self *Metric) Store(value float32, ts int64) {
 		self.latest_ts_k += 1
 	}
 	self.array[self.latest_i] += value
+	return self.total
 }
 
 func (self *Metric) GetValueAt(ts int64) float64 {
@@ -320,6 +325,7 @@ func (self *Metric) GobEncode() ([]byte, error) {
 	sm.Duration = self.duration
 	sm.Latest_i = self.latest_i
 	sm.Latest_ts_k = self.latest_ts_k
+	sm.Total = self.total
 	enc := gob.NewEncoder(&buf)
 	err := enc.Encode(&sm)
 	if err != nil {
@@ -341,6 +347,7 @@ func (self *Metric) GobDecode(_bytes []byte) error {
 	self.duration = sm.Duration
 	self.latest_i = sm.Latest_i
 	self.latest_ts_k = sm.Latest_ts_k
+	self.total = sm.Total
 	return nil
 }
 
