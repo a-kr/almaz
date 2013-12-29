@@ -176,26 +176,29 @@ func (self *AlmazServer) handleGraphiteConnection(conn net.Conn) {
 
 func (self *AlmazServer) PushUpstream(metric_updates []*MetricUpdate) {
 	subscribers := self.GetSubscribers()
+	updates_to_push := make([]*MetricUpdate, 0, len(metric_updates))
 	for _, upd := range(metric_updates) {
 		if upd.Value == 0 {
 			continue
 		}
 		upd.TotalValue = self.totals.Get(upd.Metric)
-		json_bytes, err := json.Marshal(upd)
-		if err != nil {
-			log.Printf("json encode error: %s", err)
+		updates_to_push = append(updates_to_push, upd)
+	}
+
+	json_bytes, err := json.Marshal(updates_to_push)
+	if err != nil {
+		log.Printf("json encode error: %s", err)
+		return
+	}
+	for _, sub := range(subscribers) {
+		if sub.conn == nil {
 			continue
 		}
-		for _, sub := range(subscribers) {
-			if sub.conn == nil {
-				continue
-			}
-			err = sub.conn.WriteMessage(websocket.TextMessage, json_bytes)
-			if err != nil {
-				log.Printf("WriteMessage error: %s", err)
-				sub.conn = nil
-				self.RemoveSubscriber(sub)
-			}
+		err = sub.conn.WriteMessage(websocket.TextMessage, json_bytes)
+		if err != nil {
+			log.Printf("WriteMessage error: %s", err)
+			sub.conn = nil
+			self.RemoveSubscriber(sub)
 		}
 	}
 }
