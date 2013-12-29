@@ -174,34 +174,13 @@ func (self *AlmazServer) handleGraphiteConnection(conn net.Conn) {
 	}
 }
 
-func (self *AlmazServer) AggregateByPreLastPart(metric_updates []*MetricUpdate) []*MetricUpdate {
-	by_part := make(map[string]int)
-	totals := make(map[string]int)
-	for _, upd := range(metric_updates) {
-		parts := strings.Split(upd.Metric, ".")
-		i := len(parts) - 2
-		if i < 0 {
-			continue
-		}
-		key := parts[i]
-		by_part[key] += upd.Value
-		totals[key] += self.totals.Get(upd.Metric)
-	}
-	aggregated_updates := make([]*MetricUpdate, 0, len(metric_updates))
-	for key, v := range(by_part) {
-		upd := NewMetricUpdate(key, float64(v), totals[key])
-		aggregated_updates = append(aggregated_updates, upd)
-	}
-	return aggregated_updates
-}
-
 func (self *AlmazServer) PushUpstream(metric_updates []*MetricUpdate) {
-	agg_updates := self.AggregateByPreLastPart(metric_updates)
 	subscribers := self.GetSubscribers()
-	for _, upd := range(agg_updates) {
+	for _, upd := range(metric_updates) {
 		if upd.Value == 0 {
 			continue
 		}
+		upd.TotalValue = self.totals.Get(upd.Metric)
 		json_bytes, err := json.Marshal(upd)
 		if err != nil {
 			log.Printf("json encode error: %s", err)
@@ -244,6 +223,7 @@ func (self *AlmazServer) PruneOld() {
 
 	for _, name := range(to_remove) {
 		self.storage.RemoveMetric(name)
+		self.totals.RemoveMetric(name)
 	}
 	if len(to_remove) > 0 {
 		log.Printf("%d old metrics pruned", len(to_remove))
