@@ -22,6 +22,7 @@ func (self *AlmazServer) StartHttpface(bindAddress string) {
     http.HandleFunc("/almaz/list/all-interpolated/", self.http_list_all_smooth)
     http.HandleFunc("/almaz/list/group/", self.http_list_group)
     http.HandleFunc("/almaz/stream/", self.http_stream)
+    http.HandleFunc("/almaz/load/totals/", self.http_load_totals)
     http.ListenAndServe(bindAddress, nil)
 }
 
@@ -100,6 +101,26 @@ func (self *AlmazServer) http_list_group(w http.ResponseWriter, r *http.Request)
 		}
 		fmt.Fprintf(w, "\n")
 	}
+}
+
+func (self *AlmazServer) http_load_totals(w http.ResponseWriter, r *http.Request) {
+	self.Lock()
+	defer self.Unlock()
+
+	defer r.Body.Close()
+	scanner := bufio.NewScanner(r.Body)
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		parts := strings.Split(line, " ")
+		value, err := strconv.ParseFloat(parts[1], 32)
+		if err != nil {
+			fmt.Fprintf(w, "error in line %s: %s\r\n", line, err)
+			continue
+		}
+		self.storage.SetTotal(parts[0], value)
+	}
+	fmt.Fprintf(w, "load complete\r\n")
 }
 
 func (self *AlmazServer) http_stream(w http.ResponseWriter, r *http.Request) {

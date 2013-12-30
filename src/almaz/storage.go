@@ -74,6 +74,15 @@ func (self *Storage) StoreMetric(metric_name string, value float64, ts int64) fl
 	return float64(r)
 }
 
+func (self *Storage) SetTotal(metric_name string, total float64) {
+	metric, ok := self.metrics[metric_name]
+	if !ok {
+		return
+		// for now
+	}
+	metric.SetTotal(float32(total))
+}
+
 func (self *Storage) RemoveMetric(metric_name string) {
 	delete(self.metrics, metric_name)
 }
@@ -200,6 +209,12 @@ func (self *Metric) Store(value float32, ts int64) float32 {
 	}
 	self.array[self.latest_i] += value
 	return self.total
+}
+
+func (self *Metric) SetTotal(value float32) {
+	self.Lock()
+	defer self.Unlock()
+	self.total = value
 }
 
 func (self *Metric) GetValueAt(ts int64) float64 {
