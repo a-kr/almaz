@@ -68,7 +68,7 @@ func (self *Storage) StoreMetric(metric_name string, value float64, ts int64) fl
 		metric = NewMetric(self.duration, self.dt, ts, metric_name)
 		metric.array[0] += float32(value)
 		self.metrics[metric_name] = metric
-		return
+		return value
 	}
 	r := metric.Store(float32(value), ts)
 	return float64(r)
@@ -200,7 +200,7 @@ func (self *Metric) Store(value float32, ts int64) float32 {
 			self.array[i] = 0.0
 		}
 		self.array[0] = value
-		return
+		return self.total
 	}
 	for self.latest_ts_k < ts_k {
 		self.latest_i = (self.latest_i + 1) % len(self.array)
