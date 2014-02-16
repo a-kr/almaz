@@ -38,7 +38,7 @@ type StoredMetric struct {
 	Duration    int
 	Latest_i    int
 	Latest_ts_k int64
-	Total float32
+	Total       float32
 }
 
 func NewStorage() *Storage {
@@ -60,7 +60,6 @@ func NewMetric(duration, dt int, starting_ts int64, name string) *Metric {
 	m.total = 0
 	return m
 }
-
 
 func (self *Storage) StoreMetric(metric_name string, value float64, ts int64) float64 {
 	metric, ok := self.metrics[metric_name]

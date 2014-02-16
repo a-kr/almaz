@@ -1,29 +1,30 @@
 package main
 
 import (
-	"os"
-	"log"
-	"net"
-	"time"
-	"sync"
-	"os/signal"
-	"syscall"
 	"bufio"
-	"strings"
-	"strconv"
-	"regexp"
-	"utils"
 	"encoding/json"
 	"github.com/gorilla/websocket"
+	"log"
+	"net"
+	"os"
+	"os/signal"
+	"regexp"
+	"strconv"
+	"strings"
+	"sync"
+	"syscall"
+	"time"
+	"utils"
 )
 
 type AlmazServer struct {
 	sync.RWMutex
 	acceptance_regexen []*regexp.Regexp
-	storage *Storage
-	persist_path string
-	subscribers []*StreamSubscriber
+	storage            *Storage
+	persist_path       string
+	subscribers        []*StreamSubscriber
 	last_pushed_update []byte
+	event_logger       *EventDurationLogger
 }
 
 type StreamSubscriber struct {
@@ -37,6 +38,7 @@ func NewAlmazServer(persist_path string) *AlmazServer {
 	s.persist_path = persist_path
 	s.subscribers = make([]*StreamSubscriber, 0)
 	s.last_pushed_update = make([]byte, 0)
+	s.event_logger = NewEventDurationLogger()
 	return s
 }
 
@@ -56,7 +58,7 @@ func (self *AlmazServer) RemoveSubscriber(removed_sub *StreamSubscriber) {
 	self.Lock()
 	defer self.Unlock()
 	subs := make([]*StreamSubscriber, 0, len(self.subscribers))
-	for _, sub := range(self.subscribers) {
+	for _, sub := range self.subscribers {
 		if sub != removed_sub {
 			subs = append(subs, sub)
 		}
@@ -68,7 +70,7 @@ func (self *AlmazServer) GetSubscribers() []*StreamSubscriber {
 	self.RLock()
 	defer self.RUnlock()
 	subs := make([]*StreamSubscriber, 0, len(self.subscribers))
-	for _, sub := range(self.subscribers) {
+	for _, sub := range self.subscribers {
 		subs = append(subs, sub)
 	}
 	return subs
@@ -97,9 +99,9 @@ func (self *AlmazServer) StartGraphite(bindAddress string) {
 }
 
 type MetricUpdate struct {
-	Metric string `json:"metric"`
-	Value int `json:"value"`
-	TotalValue int `json:"total_value"`
+	Metric     string `json:"metric"`
+	Value      int    `json:"value"`
+	TotalValue int    `json:"total_value"`
 }
 
 func NewMetricUpdate(metric string, value float64, total int) *MetricUpdate {
@@ -147,7 +149,7 @@ func (self *AlmazServer) handleGraphiteConnection(conn net.Conn) {
 			if len(self.acceptance_regexen) == 0 {
 				accepted = true
 			} else {
-				for _, rx := range(self.acceptance_regexen) {
+				for _, rx := range self.acceptance_regexen {
 					if rx.MatchString(metric) {
 						accepted = true
 						break
@@ -180,8 +182,8 @@ func (self *AlmazServer) PushUpstream(metric_updates []*MetricUpdate) {
 		log.Printf("json encode error: %s", err)
 		return
 	}
-	self.last_pushed_update = json_bytes;
-	for _, sub := range(subscribers) {
+	self.last_pushed_update = json_bytes
+	for _, sub := range subscribers {
 		if sub.conn == nil {
 			continue
 		}
@@ -209,13 +211,13 @@ func (self *AlmazServer) PruneOld() {
 
 	to_remove := make([]string, 0)
 
-	for name, metric := range(self.storage.metrics) {
+	for name, metric := range self.storage.metrics {
 		if metric.Age() < ts {
 			to_remove = append(to_remove, name)
 		}
 	}
 
-	for _, name := range(to_remove) {
+	for _, name := range to_remove {
 		self.storage.RemoveMetric(name)
 	}
 	if len(to_remove) > 0 {
@@ -281,16 +283,16 @@ func (self *AlmazServer) WaitForTermination(persist_on_exit bool, bgsave_interva
 
 	for {
 		select {
-			case <-bgsave_ticker.C:
-				if persist_on_exit && bgsave_interval > 0 {
-					self.ForkAndSaveToDisk()
-				}
-			case s := <-impeding_death:
-				log.Printf("Got signal:", s)
-				if persist_on_exit {
-					self.SaveToDisk()
-				}
-				return
+		case <-bgsave_ticker.C:
+			if persist_on_exit && bgsave_interval > 0 {
+				self.ForkAndSaveToDisk()
+			}
+		case s := <-impeding_death:
+			log.Printf("Got signal:", s)
+			if persist_on_exit {
+				self.SaveToDisk()
+			}
+			return
 		}
 	}
 }

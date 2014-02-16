@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta http-equiv="content-type" content="text/html; charset=UTF-8">
+  <title> - jsFiddle demo</title>
+  
+  <script type='text/javascript' src='//code.jquery.com/jquery-git2.js'></script>
+  
+  
+  
+  <link rel="stylesheet" type="text/css" href="/css/result-light.css">
+  
+  <style type='text/css'>
+    #output {
+    font-family: Consolas, Ubuntu Mono, monospace;
+    font-size: 10px;
+}
+#output .row {
+    height: 1em;
+}
+.row span.date {
+    color: gray;
+    padding-right: 5px;
+}
+.row span.host {
+    padding-right: 15px;
+}
+.row span.command {
+    font-family: Times, serif;
+    color: grey;
+    padding-right: 5px;
+}
+.row span.duration {
+    color: green;
+}
+  </style>
+  
+
+
+<script type='text/javascript'>//<![CDATA[ 
+$(window).load(function(){
+var SOURCE_URL = "/almaz/events/";
+
+function event_k(event) {
+    return event.h + event.c + event.k;
+}
+
+function TimelineTracker() {
+    var C_NULL  = "&nbsp;&nbsp;",
+        C_START = "┒",
+        C_RUN   = "┃",
+        C_END   = "┚";
+    var C_NULL  = "&nbsp;",
+        C_START = "┐",
+        C_RUN   = "│",
+        C_END   = "┘";
+    this.key_to_position = {};
+    this.states = [];
+    this.start_key = function(k) {
+        // TODO what if k was already there?
+        var i = 0, found = false;
+        while (i < this.states.length) {
+            if (this.states[i] == C_NULL) {
+                found = true; break;
+            }
+            i++;
+        }
+        if (found) {
+            this.states[i] = C_START;
+        } else {
+            i = this.states.length;
+            this.states.push(C_START);
+        }
+        this.key_to_position[k] = i;
+    };
+    this.finish_key = function(k) {
+        var i = this.key_to_position[k];
+        if (i == undefined) {
+            return;
+        }
+        this.states[i] = C_END;
+        delete this.key_to_position[k];
+    };
+    this.get_indicator = function() {
+        var new_states = [];
+        for (var i = 0; i < this.states.length; i++) {
+            new_states.push(this.states[i] + "&nbsp;");
+        }
+        return new_states.join('');
+    };
+    this.upkeep = function() {
+        for (var i = 0; i < this.states.length; i++) {
+            if (this.states[i] == C_START) {
+                this.states[i] = C_RUN;
+            } else if (this.states[i] == C_END) {
+                this.states[i] = C_NULL;
+            }
+        }
+        while (this.states.length > 0 &&
+               this.states[this.states.length - 1] == C_NULL) {
+            this.states.pop();
+        }
+    };
+    return this;
+}
+
+function load_events(events) {
+    if (typeof(events) != "object") {
+        events = JSON.parse(events);
+    }
+    var pre_output = $('#output');
+    pre_output.html('');
+
+    var timeline = new TimelineTracker();
+
+    for (var i = 0; i < events.length; i++) {
+        var event = events[i];
+        event.k = event_k(event);
+
+        var dt = event.at.substr(0, 19).replace('T', ' ');
+        var lines = "";
+        event.h = event.h.split('.')[0];
+        if (event.d != null) {
+            event.d = Math.round(event.d * 10) / 10.0 + "s";
+        }
+        if (event.e == "start") {
+            timeline.start_key(event.k);
+            event.c = "&nbsp;" + event.c;
+        } else if (event.e == "finish") {
+            timeline.finish_key(event.k);
+            event.c = "/" + event.c;
+        }
+        var timeline_indicator = timeline.get_indicator();
+        timeline.upkeep();
+
+        var html = ["<span class='date'>", dt, "</span>",
+                    "<span class='lines'>", timeline_indicator, "</span>",
+                    "<span class='host'>", event.h, "</span>",
+                    "<span class='command'>", event.c, "</span>",
+                    "<span class='duration'>", event.d, "</span>"
+                   ].join('');
+        $('<div>').addClass('row').html(html).appendTo(pre_output);
+    }
+    $('#status').text('done');
+}
+
+
+$.get(SOURCE_URL, function(data) {
+    $('#status').text('loading...');
+    load_events(data);
+});
+});//]]>  
+
+</script>
+
+
+</head>
+<body>
+  <div id="status"></div>
+<div id="output"></div>
+  
+</body>
+
+
+</html>
+

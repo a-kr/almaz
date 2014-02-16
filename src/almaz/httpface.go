@@ -1,29 +1,38 @@
 package main
 
 import (
-	"log"
-	"time"
 	"bufio"
-	"strings"
-	"strconv"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
+	"github.com/gorilla/websocket"
+	"io/ioutil"
+	"log"
 	"net/http"
 	_ "net/http/pprof"
-	"github.com/gorilla/websocket"
+	"strconv"
+	"strings"
+	"time"
 )
 
 func (self *AlmazServer) StartHttpface(bindAddress string) {
-    log.Printf("Http interface available at %s", bindAddress)
-    http.HandleFunc("/", self.http_main)
-    http.HandleFunc("/list/all/", self.http_list_all)
-    http.HandleFunc("/list/all-interpolated/", self.http_list_all_smooth)
-    http.HandleFunc("/list/group/", self.http_list_group)
-    http.HandleFunc("/almaz/list/all/", self.http_list_all)
-    http.HandleFunc("/almaz/list/all-interpolated/", self.http_list_all_smooth)
-    http.HandleFunc("/almaz/list/group/", self.http_list_group)
-    http.HandleFunc("/almaz/stream/", self.http_stream)
-    http.HandleFunc("/almaz/load/totals/", self.http_load_totals)
-    http.ListenAndServe(bindAddress, nil)
+	log.Printf("Http interface available at %s", bindAddress)
+	http.HandleFunc("/", self.http_main)
+	http.HandleFunc("/list/all/", self.http_list_all)
+	http.HandleFunc("/list/all-interpolated/", self.http_list_all_smooth)
+	http.HandleFunc("/list/group/", self.http_list_group)
+	http.HandleFunc("/events/log/", self.http_log_event)
+	http.HandleFunc("/events/index.html", self.static_factory("events_index.html", "text/html"))
+	http.HandleFunc("/events/", self.http_scan_events)
+	http.HandleFunc("/almaz/list/all/", self.http_list_all)
+	http.HandleFunc("/almaz/list/all-interpolated/", self.http_list_all_smooth)
+	http.HandleFunc("/almaz/list/group/", self.http_list_group)
+	http.HandleFunc("/almaz/stream/", self.http_stream)
+	http.HandleFunc("/almaz/load/totals/", self.http_load_totals)
+	http.HandleFunc("/almaz/events/log/", self.http_log_event)
+	http.HandleFunc("/almaz/events/index.html", self.static_factory("events_index.html", "text/html"))
+	http.HandleFunc("/almaz/events/", self.http_scan_events)
+	http.ListenAndServe(bindAddress, nil)
 }
 
 func (self *AlmazServer) http_main(w http.ResponseWriter, r *http.Request) {
@@ -44,7 +53,7 @@ func (self *AlmazServer) http_list_all_with_interpolation(w http.ResponseWriter,
 	self.RLock()
 	defer self.RUnlock()
 
-	periods := []int64{60, 15*60, 60*60, 4*60*60, 24*60*60}
+	periods := []int64{60, 15 * 60, 60 * 60, 4 * 60 * 60, 24 * 60 * 60}
 	now := time.Now().Unix()
 
 	for k := range self.storage.metrics {
@@ -144,5 +153,60 @@ func (self *AlmazServer) http_stream(w http.ResponseWriter, r *http.Request) {
 			self.RemoveSubscriber(sub)
 			return
 		}
+	}
+}
+
+func (self *AlmazServer) http_log_event(w http.ResponseWriter, r *http.Request) {
+	event := &Event{}
+	event.RunKey = r.FormValue("k")
+	event.Host = r.FormValue("h")
+	event.Outcome = r.FormValue("o")
+	event.Event = r.FormValue("e")
+	event.Command = r.FormValue("c")
+
+	if event.RunKey == "" || event.Host == "" || event.Event == "" || event.Command == "" {
+		http.Error(w, fmt.Sprintf("k, h, e and c arguments are mandatory"), 400)
+		return
+	}
+
+	cmd_bytes, err := base64.StdEncoding.DecodeString(event.Command)
+	if err != nil {
+		// assume the caller simply forgot to base64-encode
+	} else {
+		event.Command = string(cmd_bytes)
+	}
+	event.Command = strings.TrimSpace(event.Command)
+	self.event_logger.AddEvent(event)
+	w.Write([]byte("ok"))
+}
+
+func (self *AlmazServer) http_scan_events(w http.ResponseWriter, r *http.Request) {
+	host_prefix := r.FormValue("host")
+	command_substring := r.FormValue("command")
+	matched := self.event_logger.ScanEvents(host_prefix, command_substring)
+
+	json_bytes, err := json.Marshal(&matched)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("error while formatting json response: %s", err), 500)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(json_bytes)
+}
+
+func (self *AlmazServer) static_factory(path string, content_type string) http.HandlerFunc {
+	full_path := GetExecutableDir() + "/" + path
+
+	return func(w http.ResponseWriter, r *http.Request) {
+		file_bytes, err := ioutil.ReadFile(full_path)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("error while serving static file: %s", err), 500)
+			return
+		}
+		if content_type != "" {
+			w.Header().Set("Content-Type", content_type)
+		}
+		w.Write(file_bytes)
 	}
 }

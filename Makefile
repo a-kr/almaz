@@ -11,5 +11,8 @@ run: almaz
 test:
 	go test almaz
 
+fmt:
+	go fmt almaz
+
 depend:
 	go get github.com/gorilla/websocket
