@@ -37,7 +37,19 @@
   
 
 
-<script type='text/javascript'>//<![CDATA[ 
+<script type='text/javascript'>//<![CDATA[
+function getQueryVariable(variable) {
+    var query = window.location.search.substring(1);
+    var vars = query.split('&');
+    for (var i = 0; i < vars.length; i++) {
+        var pair = vars[i].split('=');
+        if (decodeURIComponent(pair[0]) == variable) {
+            return decodeURIComponent(pair[1]);
+        }
+    }
+    console.log('Query variable %s not found', variable);
+}
+
 $(window).load(function(){
 var SOURCE_URL = "/almaz/events/";
 
@@ -113,6 +125,8 @@ function load_events(events) {
 
     var timeline = new TimelineTracker();
 
+    var command_q = getQueryVariable("cmd");
+
     for (var i = 0; i < events.length; i++) {
         var event = events[i];
         event.k = event_k(event);
@@ -120,8 +134,12 @@ function load_events(events) {
         var dt = event.at.substr(0, 19).replace('T', ' ');
         var lines = "";
         event.h = event.h.split('.')[0];
-        if (event.d != null) {
-            event.d = Math.round(event.d * 10) / 10.0 + "s";
+        var d = event.d;
+        if (d != null) {
+            d = Math.round(event.d * 10) / 10.0 + "s";
+        }
+        if (!!command_q && (event.c.indexOf(command_q) == -1)) {
+            continue;
         }
         if (event.e == "start") {
             timeline.start_key(event.k);
@@ -133,11 +151,18 @@ function load_events(events) {
         var timeline_indicator = timeline.get_indicator();
         timeline.upkeep();
 
+        var h = event.h, c = event.c;
+        /// if (event.e == "finish" && event.d < 60) {
+        ///     // чтобы не загромождать вывод
+        ///     h = "";
+        ///     c = "";
+        /// }
+
         var html = ["<span class='date'>", dt, "</span>",
                     "<span class='lines'>", timeline_indicator, "</span>",
-                    "<span class='host'>", event.h, "</span>",
-                    "<span class='command'>", event.c, "</span>",
-                    "<span class='duration'>", event.d, "</span>"
+                    "<span class='host'>", h, "</span> ",
+                    "<span class='command'>", c, "</span> ",
+                    "<span class='duration'>", d, "</span>"
                    ].join('');
         $('<div>').addClass('row').html(html).appendTo(pre_output);
     }
